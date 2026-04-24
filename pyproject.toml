@@ -1,0 +1,20 @@
+[project]
+name = "krisp"
+version = "0.1.0"
+description = "Kiruna Radiometric Inference and Software Platform: KRISP"
+readme = "README.md"
+authors = [
+    { name = "Richard Johansson", email = "richard.johansson@irf.se" }
+]
+requires-python = ">=3.14"
+dependencies = [
+    "matplotlib>=3.10.8",
+    "numpy>=2.4.4",
+    "rich>=15.0.0",
+    "scipy>=1.17.1",
+    "watchdog>=6.0.0",
+]
+
+[build-system]
+requires = ["setuptools>=61"]
+build-backend = "setuptools.build_meta"
