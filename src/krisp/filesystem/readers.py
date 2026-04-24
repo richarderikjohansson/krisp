@@ -23,7 +23,15 @@ class MeasurementAttributes:
 
 
 class MeasurementReader:
-    """Utility class for reading measurement HDF5 files into xarray."""
+    """Utility class for reading measurement HDF5 files into xarray.
+
+    This class only have one job, namely load and return measurement data
+    from either KIMRA or MIRA2. This is done by calling the .read() method
+
+    Example:
+        data = MeasurementReader("path/to/file") # returning only the data as a xarray.Dataset
+        data, attrs = MeasurementReader("path/to/file", attrs=True) # returning data (xarray.Dataset) and measurement attributes (MeasurementAttributes)
+    """
 
     def __init__(self, *args, **kwargs):
         raise TypeError(
@@ -33,10 +41,20 @@ class MeasurementReader:
 
     @classmethod
     def read(
-        cls,
+        cls: MeasurementReader,
         file_path: str | Path,
         attrs: bool = False,
     ) -> xr.Dataset | Tuple[xr.Dataset, MeasurementAttributes]:
+        """Class method to read .h5 file with measurement data
+
+        :param cls: MeasurementReader
+        :param file_path: path to the file with measurement data
+        :param attrs: boolean to determine if measurement attributes also should be returned
+        separatley
+        :raises FileNotFoundError: is raised if the file cannot be found
+        :return: either only the data in xarray.Dataset if the attrs argument is false,
+        or a tuple with in the following format Typle[xarray.Dataset, MeasurementAttributes]
+        """
         path = Path(file_path)
         if not path.exists():
             raise FileNotFoundError(f"{path} does not exist")
@@ -111,7 +129,7 @@ class MeasurementReader:
         )
 
     @staticmethod
-    def _infer_dims(name: str, data) -> Tuple[str, ...]:
+    def _infer_dims(name: str, data: NDArray) -> Tuple[str, ...]:
         era5_group = {"h2o", "o3", "temperature", "pressure"}
         ret_group = {"pret", "apriori"}
 
@@ -131,3 +149,16 @@ class MeasurementReader:
             return ("pret",)
 
         return tuple(f"dim_{i}" for i in range(data.ndim))
+
+
+def calculate_mid_measurement_from_attrs(attrs: MeasurementAttributes) -> datetime:
+    """Function to calculate the datetime in the middle of the measurement
+
+    :param attrs: measurement attributes
+    :raises TypeError: is raised if argument not is of type MeasurementAttributes
+    :return: datetime of the middle of the measurement
+    """
+    if not isinstance(attrs, MeasurementAttributes):
+        raise TypeError("Argument is not of type MeasurementAttributes")
+    half_meas = (attrs.end - attrs.start) / 2
+    return (attrs.start + half_meas).replace(microsecond=0)
