@@ -1,0 +1,1 @@
+PYARTS_VERSION = "2.6.18"
