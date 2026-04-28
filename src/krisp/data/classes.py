@@ -1,6 +1,8 @@
 from typing import Dict, List
 from datetime import datetime
 import numpy as np
+from numpy.typing import NDArray
+from typing import Any
 
 
 class BaseDataClass:
@@ -31,21 +33,40 @@ class BaseDataClass:
         return dict(self.__dict__)
 
 
-class Attributes(BaseDataClass):
-    """Utility class to dynamically set attribute data from a dictionary"""
+class GroupNotFoundError(Exception):
+    """
+    Custom error for when group not found in .h5 file
+    """
 
-    def __init__(self, data: Dict):
-        for key, value in data.items():
-            if key == "start" or key == "end" or key == "middle":
-                value = datetime.fromtimestamp(value)
-            setattr(self, key, value)
+    pass
 
 
 class Configuration(BaseDataClass):
-    """Utility class to dynamically set configuration data from a dictionary"""
+    """
+    Configuration data class associated with content in .toml configuration files
+    """
 
     def __init__(self, data: Dict):
         for key, value in data.items():
             if isinstance(value, List):
-                value = np.array(value)
+                value: NDArray = np.array(object=value)
+            setattr(self, key, value)
+
+
+class Attributes(BaseDataClass):
+    """
+    Attributes data class associated with attributes in .h5 files
+
+    """
+
+    mode: str
+    start: datetime
+    middle: datetime
+    end: datetime
+
+    def __init__(self, data: Dict):
+
+        for key, value in data.items():
+            if key in ("start", "end", "middle"):
+                value: datetime = datetime.fromtimestamp(timestamp=value)
             setattr(self, key, value)

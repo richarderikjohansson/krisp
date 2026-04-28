@@ -1,40 +1,53 @@
 import h5py
+from h5py import Dataset
 import xarray as xr
 from pathlib import Path, PosixPath
 from numpy.typing import NDArray
-from krisp.data.classes import Attributes, Configuration
-from typing import Tuple
-from datetime import datetime
+from krisp.data.classes import Attributes, Configuration, GroupNotFoundError
+from typing import Tuple, Any, Dict
+from datetime import datetime, timedelta
 import tomllib
 
 
-class GroupNotFoundError(Exception):
-    pass
-
-
 class ConfigReader:
-    """Class for parsing retrieval configuration files"""
+    """
+    Configuration reader class
+    """
 
     @classmethod
-    def load(cls, path: str | PosixPath | Path) -> Configuration:
+    def load(cls, path: PosixPath | Path) -> Configuration:
+        """
+        Loader method for ConfigReader. Loads a config from a path
 
+
+        Parameters
+        ----------
+        path
+            Path to the configuration file
+
+        Returns
+        -------
+        Configuration
+            The configuration as a Configuration class
+
+        Raises
+        ------
+        FileNotFoundError:
+            Raises if the configuration file cannot be found
+        """
+
+        path = Path(path)
         if not path.exists():
             raise FileNotFoundError(f"{path} not found")
 
         with path.open("rb") as f:
-            config = tomllib.load(f)
+            config: Dict[str, Any] = tomllib.load(f)
             return Configuration(data=config)
 
 
 class DataReader:
-    """Class for reading data from HDF5 files into xarray.
-
-    This class only have one job, namely load and return measurement data
-    from either KIMRA or MIRA2. This is done by calling the .read() method
-
-    Example:
-        data = MeasurementReader("path/to/file")                    # returning only the data as a xarray.Dataset
-        data, attrs = MeasurementReader("path/to/file", attrs=True) # returning data (xarray.Dataset) and measurement attributes (MeasurementAttributes)
+    """
+    Data reader class
     """
 
     def __init__(self, *args, **kwargs):
@@ -49,25 +62,40 @@ class DataReader:
         attrs: bool = False,
         group: str = "measurement",
     ) -> xr.Dataset | Tuple[xr.Dataset, Attributes]:
-        """Class method to read .h5 file with measurement data
-
-        :param cls: MeasurementReader
-        :param file_path: path to the file with measurement data
-        :param attrs: boolean to determine if measurement attributes also should be returned
-        separatley
-        :raises FileNotFoundError: is raised if the file cannot be found
-        :return: either only the data in xarray.Dataset if the attrs argument is false,
-        or a tuple with in the following format Tuple[xarray.Dataset, MeasurementAttributes]
         """
-        path = Path(file_path)
+        Loader method for the DataReader
+
+
+        Parameters
+        ----------
+        file_path
+            Path to .h5 file with data
+        attrs
+            Boolean flag whether attributes should be returned
+        group
+            Group in .h5 file
+
+        Returns
+        -------
+        xr.Dataset | Tuple[xr.Dataset, Attributes]
+            Data in as a xarray Dataset and optionally also the attributes with type Attributes
+
+        Raises
+        ------
+        FileNotFoundError:
+            Is raised if the file with data can not be found
+        GroupNotFoundError:
+            Is raised if the group in .h5 file can not be found
+        """
+        path: Path = Path(file_path)
         if not path.exists():
             raise FileNotFoundError(f"{path} does not exist")
 
-        with h5py.File(path) as fh:
+        with h5py.File(name=path, mode="r") as fh:
             grp_keys = fh.keys()
             if group not in grp_keys:
                 raise GroupNotFoundError(f"{group}" for found in {file_path})
-            group = fh[group]
+            group: h5py.Dataset = fh[group]
             return cls._group_to_dataset(group, attrs)
 
     @staticmethod
@@ -75,7 +103,7 @@ class DataReader:
         group: h5py.Group,
         attrs: bool,
     ) -> xr.Dataset | Tuple[xr.Dataset, Attributes]:
-        data_vars = {}
+        data_vars: Dict[str, Any] = {}
 
         for name, obj in group.items():
             if not isinstance(obj, h5py.Dataset):
@@ -83,20 +111,19 @@ class DataReader:
 
             data_vars[name] = DataReader._wrap(name, obj)
         if attrs:
-            # check if this can be generalized
-            attrs_dict = group.attrs
+            attrs_dict: Dict = group.attrs
 
             return (
                 xr.Dataset(data_vars, attrs=dict(group.attrs)),
-                Attributes(attrs_dict),
+                Attributes(data=attrs_dict),
             )
         else:
             return xr.Dataset(data_vars, attrs=dict(group.attrs))
 
     @staticmethod
     def _wrap(name: str, ds: h5py.Dataset) -> xr.DataArray:
-        data = ds[()]
-        dims = DataReader._infer_dims(name, data)
+        data: h5py.Dataset = ds[()]
+        dims: Tuple[str, ...] = DataReader._infer_dims(name, data)
 
         return xr.DataArray(
             data,
@@ -106,7 +133,7 @@ class DataReader:
 
     @staticmethod
     def _infer_dims(name: str, data: NDArray) -> Tuple[str, ...]:
-        dim_map = {
+        dim_map: Dict[str, Tuple] = {
             "h2o": ("pressure",),
             "o3": ("pressure",),
             "temperature": ("pressure",),
@@ -123,5 +150,5 @@ class DataReader:
 
     @staticmethod
     def _get_mid_from_attrs(start: datetime, end: datetime) -> datetime:
-        half_meas = (end - start) / 2
+        half_meas: timedelta = (end - start) / 2
         return (start + half_meas).replace(microsecond=0)

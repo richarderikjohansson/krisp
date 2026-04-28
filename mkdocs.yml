@@ -1,0 +1,40 @@
+site_name: KRISP
+nav:
+  - Home: index.md
+  - CLI: cli/cli.md
+  - API reference:
+    - Data:
+      - Readers: api_ref/data/readers.md
+      - Classes: api_ref/data/classes.md
+    - Filesystem: 
+      - Paths: api_ref/filesystem/paths.md
+    - Physics:
+      - Atmosphere: api_ref/physics/atmosphere.md
+    - Retrieval: api_ref/retrieval.md
+    - Statistics: api_ref/statistics.md
+
+theme: readthedocs
+plugins:
+  - mkdocstrings:
+      handlers:
+        python:
+          options:
+            show_root_full_path: true
+            show_source: false
+            docstring_style: numpy
+            docstring_section_style: table
+            show_docstring_functions: true
+            show_docstring_modules: true
+            show_docstring_description: true
+
+extra_javascript:
+  - https://cdnjs.cloudflare.com/ajax/libs/mathjax/2.7.4/MathJax.js?config=TeX-AMS-MML_HTMLorMML
+markdown_extensions:
+  - mdx_math
+  - pymdownx.highlight:
+      anchor_linenums: true
+      line_spans: __span
+      pygments_lang_class: true
+  - pymdownx.inlinehilite
+  - pymdownx.snippets
+  - pymdownx.superfences

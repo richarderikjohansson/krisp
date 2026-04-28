@@ -1,43 +1,59 @@
 from pathlib import Path
-from pathlib import PosixPath
 import pyarts
 from krisp._const import PYARTS_VERSION
 from krisp.filesystem._const import ARTS_SUMMER_ATM
 from krisp.filesystem._const import ARTS_WINTER_ATM
 from krisp.filesystem._const import ARTS_LINES
 from krisp.filesystem._const import ARTS_CIA
-from krisp.data.readers import Attributes
-from typing import Dict
+from krisp.data.classes import Attributes
 from importlib.resources import files
+from typing import Dict
 
 
 class Paths:
-    def __init__(self, paths):
+    """
+    Paths class
+    """
+
+    def __init__(self, paths: Dict):
         for key, value in paths.items():
             setattr(self, key, value)
 
 
-def find_arts_paths(month: int) -> Dict:
-    """Function to set ARTS related paths
-
-    :param month: month of measurement
-    :return: ARTS related paths
+def find_arts_paths(month: int) -> Paths:
     """
-    home = Path.home()
-    artsdir = home / ".cache/arts"
+    Function to locate xml and catalogue directories for PyARTS
 
-    xml_path = artsdir / f"arts-xml-data-{PYARTS_VERSION}"
-    cat_path = artsdir / f"arts-cat-data-{PYARTS_VERSION}"
+    This function mainly acts as a helper function to locate various
+    paths to directories used for pyarts retrievals and simulations
+
+    Parameters
+    ----------
+    month
+        This parameter decides with atmospheric base that is used. Between
+        October and April (inclusive) will winter atmosphere be used and between
+        between May and September will summer atmosphere be used
+
+    Returns
+    -------
+    Paths
+        Paths to atrospheric base: "atmosphere_base, lines: "lines" and cia: "cia:
+    """
+    home: Path = Path.home()
+    artsdir: Path = home / ".cache/arts"
+
+    xml_path: Path = artsdir / f"arts-xml-data-{PYARTS_VERSION}"
+    cat_path: Path = artsdir / f"arts-cat-data-{PYARTS_VERSION}"
 
     if not xml_path.exists() or cat_path.exists():
         pyarts.cat.download.retrieve()
 
     if month in range(5, 10):
-        atmos = str(xml_path / ARTS_SUMMER_ATM)
+        atmos: str = str(xml_path / ARTS_SUMMER_ATM)
     else:
         atmos = str(xml_path / ARTS_WINTER_ATM)
 
-    out = {
+    out: Dict[str, str] = {
         "atmosphere_base": atmos,
         "lines": str(cat_path / ARTS_LINES) + "/",
         "cia": str(cat_path / ARTS_CIA) + "/",
@@ -45,14 +61,24 @@ def find_arts_paths(month: int) -> Dict:
     return Paths(paths=out)
 
 
-def find_default_configs(attrs: Attributes) -> Paths:
-    """Function to set the path to the default config file based on the mode
+def find_default_configs(attrs: Attributes) -> Paths | None:
+    """
+    Function to locate default configuration for retrievals
 
-    :param attrs: measurement attributes
-    :return: path to config file
+
+    Parameters
+    ----------
+    attrs
+        Attributes from measurement data
+
+    Returns
+    -------
+    Paths | None
+        Path to configuration file
     """
     configs_dir = files("krisp.arts").joinpath("configs")
     for config in configs_dir.iterdir():
-        name = config.name
+        name: str = config.name
+
         if attrs.mode in name:
             return Paths(paths={"path": config})
