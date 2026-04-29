@@ -20,7 +20,7 @@ class Paths:
             setattr(self, key, value)
 
 
-def find_arts_paths(month: int) -> Paths:
+def find_arts_paths(attrs: Attributes) -> Paths:
     """
     Function to locate xml and catalogue directories for PyARTS
 
@@ -39,6 +39,7 @@ def find_arts_paths(month: int) -> Paths:
     Paths
         Paths to atrospheric base: "atmosphere_base, lines: "lines" and cia: "cia:
     """
+    month = attrs.middle.month
     home: Path = Path.home()
     artsdir: Path = home / ".cache/arts"
 
@@ -61,7 +62,7 @@ def find_arts_paths(month: int) -> Paths:
     return Paths(paths=out)
 
 
-def find_default_configs(attrs: Attributes) -> Paths | None:
+def find_default_configs(attrs: Attributes) -> Path | None:
     """
     Function to locate default configuration for retrievals
 
@@ -81,4 +82,4 @@ def find_default_configs(attrs: Attributes) -> Paths | None:
         name: str = config.name
 
         if attrs.mode in name:
-            return Paths(paths={"path": config})
+            return config

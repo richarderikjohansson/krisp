@@ -134,14 +134,14 @@ class DataReader:
     @staticmethod
     def _infer_dims(name: str, data: NDArray) -> Tuple[str, ...]:
         dim_map: Dict[str, Tuple] = {
-            "h2o": ("pressure",),
-            "o3": ("pressure",),
-            "temperature": ("pressure",),
-            "pressure": ("pressure",),
-            "frequency": ("frequency",),
-            "spectra": ("frequency",),
-            "apriori": ("pret",),
-            "pret": ("pret",),
+            "h2o": ("p",),
+            "o3": ("p",),
+            "temperature": ("p",),
+            "p": ("p",),
+            "fb": ("fb",),
+            "y": ("fb",),
+            "apriori": ("p_ret",),
+            "p_ret": ("p_ret",),
         }
         if name in dim_map:
             return dim_map[name]
