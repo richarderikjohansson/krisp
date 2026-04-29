@@ -141,7 +141,7 @@ class RetrievalOEMInit:
         self.retobj.arts.covmat_sxAddBlock(block=self.retconf.fshift_cov)
 
     def add_Se(self):
-        vec = np.full_like(self.retobj.data.fb.values, 0.5)
+        vec = np.full_like(self.retobj.data.fb.values[50:-50], 0.5)
         sparse_block = pyarts.arts.Sparse()
         self.retobj.arts.DiagonalMatrix(sparse_block, vec)
         self.retobj.arts.covmat_seAddBlock(block=sparse_block)
