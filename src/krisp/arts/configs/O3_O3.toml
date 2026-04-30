@@ -8,13 +8,14 @@ description = "Default O3_O3 configuration"
 f_start = 235176865000.0
 f_end = 237676987100.0
 f_res = 76300
+f_clip = 100
 
 # atmosphere and radiative transfer
 abs_species = ["O3", "H2O-PWR2022", "O2-PWR2022", "O2-CIA-O2", "O2-CIA-N2", "N2-CIA-N2"]
 atmosphere_dim = 1
 stokes_dim = 1
 ppath_lmax = -1
-iy_unit = "RJBT"
+iy_unit = "PlackBT"
 agendas = "default"
 
 # loc
@@ -27,11 +28,13 @@ poly_covs = [[0.5], [1.4]]
 
 # OEM frequency shift
 fshift_df = 36e3
-fshift_cov = 1000
+fshift_cov = 10000
 
 # OEM setup
 f_interp_order = 1
 stop_dx = 0.01
-lm_ga_settings = [10, 2, 2, 100, 1, 99]
+lm_ga_settings = [100, 2, 2, 200, 5, 99]
+
+# MORE OEM SETTINGS NEEDED!
 
 
