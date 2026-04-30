@@ -112,6 +112,11 @@ class AtmosphereAndRT:
         self.retobj.arts.sensor_pos = [[self.z_ret[0] + 20]]
         self.retobj.arts.sensor_los = [[self.retobj.attrs.zenith]]
         self.retobj.arts.AntennaOff()
+        self.retobj.arts.ArrayOfTimeSetConstant(
+            self.retobj.arts.sensor_time,
+            1,
+            pyarts.arts.Time(0),
+        )
 
         @pyarts.workspace.arts_agenda(ws=self.retobj.arts)
         def sensor_response_agenda(ws):
