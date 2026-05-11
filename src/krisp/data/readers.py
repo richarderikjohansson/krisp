@@ -47,108 +47,82 @@ class ConfigReader:
 
 class DataReader:
     """
-    Data reader class
+    Data reader class for reading .h5 files into xarray Datasets.
+    Cannot be instantiated — use DataReader.load(path) instead.
     """
 
     def __init__(self, *args, **kwargs):
-        raise TypeError(
-            "MeasurementReader cannot be instantiated. Use MeasurementReader.read(path) instead."
-        )
+        raise TypeError("DataReader cannot be instantiated. Use DataReader.load(path) instead.")
 
     @classmethod
     def load(
-        cls: DataReader,
-        file_path: str | Path,
-        attrs: bool = False,
+        cls,
+        file: str | Path,
         group: str = "measurement",
-    ) -> xr.Dataset | Tuple[xr.Dataset, Attributes]:
+    ) -> Tuple[xr.Dataset, xr.Dataset]:
         """
-        Loader method for the DataReader
-
+        Load data and provenance groups from an .h5 file.
 
         Parameters
         ----------
-        file_path
-            Path to .h5 file with data
-        attrs
-            Boolean flag whether attributes should be returned
-        group
-            Group in .h5 file
+        file_path : str | Path
+            Path to the .h5 file.
+        group : str
+            Measurement group name. Defaults to "measurement".
 
         Returns
         -------
-        xr.Dataset | Tuple[xr.Dataset, Attributes]
-            Data in as a xarray Dataset and optionally also the attributes with type Attributes
+        Tuple[xr.Dataset, xr.Dataset]
+            Measurement data as the first element, provenance data as the second.
 
         Raises
         ------
-        FileNotFoundError:
-            Is raised if the file with data can not be found
-        GroupNotFoundError:
-            Is raised if the group in .h5 file can not be found
+        FileNotFoundError
+            If the file does not exist.
+        GroupNotFoundError
+            If either group is not found in the file.
         """
-        path: Path = Path(file_path)
+        path = Path(file)
         if not path.exists():
-            raise FileNotFoundError(f"{path} does not exist")
+            raise FileNotFoundError(f"{path} does not exist.")
 
-        with h5py.File(name=path, mode="r") as fh:
-            grp_keys = fh.keys()
-            if group not in grp_keys:
-                raise GroupNotFoundError(f"{group}" for found in {file_path})
-            group: h5py.Dataset = fh[group]
-            return cls._group_to_dataset(group, attrs)
+        with h5py.File(path, "r") as fh:
+            for grp_name in (group, "provenance"):
+                if grp_name not in fh:
+                    raise GroupNotFoundError(f"Group '{grp_name}' not found in {path}.")
 
-    @staticmethod
-    def _group_to_dataset(
-        group: h5py.Group,
-        attrs: bool,
-    ) -> xr.Dataset | Tuple[xr.Dataset, Attributes]:
-        data_vars: Dict[str, Any] = {}
+            data = cls._group_to_dataset(fh[group], read_dims=True)
+            provenance = cls._group_to_dataset(fh["provenance"], read_dims=False)
 
-        for name, obj in group.items():
+        return data, provenance
+
+    @classmethod
+    def _group_to_dataset(cls, grp: h5py.Group, read_dims) -> xr.Dataset:
+        data_vars = {}
+        for name, obj in grp.items():
             if not isinstance(obj, h5py.Dataset):
                 continue
+            data = obj[()]
+            if isinstance(data, bytes):
+                data = data.decode()
 
-            data_vars[name] = DataReader._wrap(name, obj)
-        if attrs:
-            attrs_dict: Dict = group.attrs
-
-            return (
-                xr.Dataset(data_vars, attrs=dict(group.attrs)),
-                Attributes(data=attrs_dict),
-            )
-        else:
-            return xr.Dataset(data_vars, attrs=dict(group.attrs))
+            dims = cls._read_dims(obj, data.ndim) if read_dims else ()
+            data_vars[name] = xr.DataArray(data, dims=dims, attrs=dict(obj.attrs))
+        return xr.Dataset(data_vars, attrs=dict(grp.attrs))
 
     @staticmethod
-    def _wrap(name: str, ds: h5py.Dataset) -> xr.DataArray:
-        data: h5py.Dataset = ds[()]
-        dims: Tuple[str, ...] = DataReader._infer_dims(name, data)
+    def _read_dims(ds: h5py.Dataset, ndim: int) -> Tuple[str, ...]:
+        if "dims" not in ds.attrs:
+            return tuple(f"dim_{i}" for i in range(ndim))
+        raw = ds.attrs["dims"]
+        if isinstance(raw, (bytes, str)):
+            return (raw.decode() if isinstance(raw, bytes) else raw,)
+        return tuple(d.decode() if isinstance(d, bytes) else str(d) for d in raw)
 
-        return xr.DataArray(
-            data,
-            dims=dims,
-            attrs=dict(ds.attrs),
-        )
 
-    @staticmethod
-    def _infer_dims(name: str, data: NDArray) -> Tuple[str, ...]:
-        dim_map: Dict[str, Tuple] = {
-            "h2o": ("p",),
-            "o3": ("p",),
-            "temperature": ("p",),
-            "p": ("p",),
-            "fb": ("fb",),
-            "y": ("fb",),
-            "apriori": ("p_ret",),
-            "p_ret": ("p_ret",),
-        }
-        if name in dim_map:
-            return dim_map[name]
-
-        return tuple(f"dim_{i}" for i in range(data.ndim))
-
-    @staticmethod
-    def _get_mid_from_attrs(start: datetime, end: datetime) -> datetime:
-        half_meas: timedelta = (end - start) / 2
-        return (start + half_meas).replace(microsecond=0)
+def read_apriori_file(path: Path) -> Dict:
+    with h5py.File(path, "r") as fh:
+        dct = {}
+        for k, v in fh.items():
+            dct[k] = {n: d[()] for n, d in v.items()}
+    return dct

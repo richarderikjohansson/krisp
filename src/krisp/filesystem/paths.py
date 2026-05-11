@@ -5,8 +5,10 @@ from krisp.filesystem._const import ARTS_SUMMER_ATM
 from krisp.filesystem._const import ARTS_WINTER_ATM
 from krisp.filesystem._const import ARTS_LINES
 from krisp.filesystem._const import ARTS_CIA
-from krisp.data.classes import Attributes
+from krisp.data.classes import Configuration
 from importlib.resources import files
+from datetime import datetime
+from xarray import Dataset
 from typing import Dict
 
 
@@ -20,7 +22,7 @@ class Paths:
             setattr(self, key, value)
 
 
-def find_arts_paths(attrs: Attributes) -> Paths:
+def find_arts_paths(attrs: Dataset) -> Paths:
     """
     Function to locate xml and catalogue directories for PyARTS
 
@@ -39,7 +41,8 @@ def find_arts_paths(attrs: Attributes) -> Paths:
     Paths
         Paths to atrospheric base: "atmosphere_base, lines: "lines" and cia: "cia:
     """
-    month = attrs.middle.month
+    id = attrs.id.values
+    month = datetime.fromtimestamp(id).month
     home: Path = Path.home()
     artsdir: Path = home / ".cache/arts"
 
@@ -62,7 +65,7 @@ def find_arts_paths(attrs: Attributes) -> Paths:
     return Paths(paths=out)
 
 
-def find_default_configs(attrs: Attributes) -> Path | None:
+def find_default_configs(attrs: Dataset) -> Path | None:
     """
     Function to locate default configuration for retrievals
 
@@ -81,5 +84,14 @@ def find_default_configs(attrs: Attributes) -> Path | None:
     for config in configs_dir.iterdir():
         name: str = config.name
 
-        if attrs.mode in name:
+        if str(attrs.mode.values) in name:
             return config
+
+
+def find_apriori(config: Configuration) -> Path:
+    apridir = files("krisp.arts").joinpath("data")
+    target = config.target.lower()
+    for file in apridir.iterdir():
+        name = file.name
+        if target in name:
+            return file

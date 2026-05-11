@@ -11,7 +11,7 @@ def interp_from_ecmwf_to_pret(data: Dataset, product: str | NDArray) -> NDArray:
     if isinstance(product, np.ndarray):
         p_src = data["p"].values
         prod_src = product
-        p_tgt = data["p_ret"].values
+        p_tgt = data["pret"].values
         interp = PchipInterpolator(np.log(p_src[::-1]), prod_src[::-1])
         prod_tgt = interp(np.log(p_tgt[::-1]))
         return prod_tgt[::-1]
@@ -19,7 +19,7 @@ def interp_from_ecmwf_to_pret(data: Dataset, product: str | NDArray) -> NDArray:
     assert hasattr(data, product)
     p_src = data["p"].values
     prod_src = data[product].values
-    p_tgt = data["p_ret"].values
+    p_tgt = data["pret"].values
 
     interp = PchipInterpolator(np.log(p_src[::-1]), prod_src[::-1])
     prod_tgt = interp(np.log(p_tgt[::-1]))

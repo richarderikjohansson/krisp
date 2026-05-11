@@ -1,6 +1,7 @@
 site_name: KRISP
 nav:
   - Home: index.md
+  - Naming conventions: naming_conventions.md
   - CLI: cli/cli.md
   - API reference:
     - Data:

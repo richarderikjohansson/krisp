@@ -3,11 +3,16 @@ from datetime import datetime
 from pathlib import Path
 import numpy as np
 
-from krisp.data.readers import ConfigReader, DataReader
+from importlib.resources import files
+
+from krisp.data.readers import ConfigReader, DataReader, read_apriori_file, xr
 from krisp.filesystem.paths import find_default_configs
 from krisp.arts.agendas import default_agendas
-from krisp.arts.atmosphere import AtmosphereAndRT
+from krisp.arts.atmosphere import RTandAtmosphereRetrieval
 from krisp.arts.oem_setup import RetrievalOEMInit
+from krisp.data.classes import Configuration
+from krisp.filesystem.paths import find_apriori
+from krisp.physics.atmosphere import pressure2height
 
 
 class Retrieval:
@@ -24,7 +29,7 @@ class Retrieval:
         self.perform_checks()
 
     def set_data_and_config(self, config: Path | str = "default"):
-        self.data, self.attrs = DataReader.load(self.fp, attrs=True, group="measurement")
+        self.data, self.attrs = DataReader.load(self.fp, group="measurement")
         if config == "default":
             config = find_default_configs(self.attrs)
         self.config = ConfigReader.load(config)
@@ -44,7 +49,21 @@ class Retrieval:
         self.arts.y = self.data.y.values[fmask][f_clip:-f_clip]
         self.arts.f_backend = self.data.fb.values[fmask][f_clip:-f_clip]
         self.arts.f_grid = np.arange(fs, fe, step=self.config.f_res)
-        self.arts.p_grid = self.data.p_ret.values
+
+        apriori_file = find_apriori(self.config)
+        apriori = read_apriori_file(apriori_file)
+        id = self.attrs.id.values
+        dt = datetime.fromtimestamp(id)
+        month = str(dt.month)
+        data = apriori[month]
+        apriori = data["o3a"]
+        pret = data["pret"]
+        zret = pressure2height(pret)
+
+        self.data["apriori"] = xr.DataArray(data=apriori, dims="pret")
+        self.data["zret"] = xr.DataArray(data=zret, dims="pret")
+        self.data["pret"] = xr.DataArray(data=pret, dims="pret")
+        self.arts.p_grid = pret
 
     def perform_checks(self):
 
@@ -56,7 +75,7 @@ class Retrieval:
         self.arts.sensor_checkedCalc()
 
     def set_atmosphere(self):
-        atm = AtmosphereAndRT(obj=self)
+        atm = RTandAtmosphereRetrieval(obj=self)
         atm.execute()
 
     def init_OEM(self):
