@@ -46,6 +46,7 @@ class Retrieval:
         f_clip = self.config.f_clip
         fs, fe = self.config.f_start, self.config.f_end
         fmask = (fs <= self.data.fb.values) & (self.data.fb.values <= fe)
+        self.fmask = fmask
         self.arts.y = self.data.y.values[fmask][f_clip:-f_clip]
         self.arts.f_backend = self.data.fb.values[fmask][f_clip:-f_clip]
         self.arts.f_grid = np.arange(fs, fe, step=self.config.f_res)
@@ -89,25 +90,42 @@ class Retrieval:
         def inversion_iterate_agenda(ws):
             """Custom inversion iterate agenda to ignore bad partition functions."""
             ws.Ignore(ws.inversion_iteration_counter)
-
-            ws.xClip(ijq=0, limit_low=0.00000000001, limit_high=0.00002)
-
-            # Map x to ARTS' variables
             ws.x2artsAtmAndSurf()
-            ws.x2artsSensor()
-
-            ws.atmfields_checkedCalc(negative_vmr_ok=True)
+            ws.x2artsSensor()  # No need to call this WSM if no sensor variables retrieved
+            ws.vmr_fieldClip(species="ALL", limit_low=0)
+            ws.atmfields_checkedCalc()
             ws.atmgeom_checkedCalc()
+            ws.yCalc(y=ws.yf)
+            ws.VectorAddElementwise(ws.yf, ws.yf, ws.y_baseline)
+            ws.jacobianAdjustAndTransform()
 
-            # Calculate yf and Jacobian matching x
-            ws.yCalc(y=ws.yf)  # (y=ws.yf)
-
-            # Add baseline term
-            ws.VectorAddElementwise(ws.yf, ws.y, ws.y_baseline)
-
+        self.arts.inversion_iterate_agenda = inversion_iterate_agenda
         self.arts.OEM(
             method="lm",
             stop_dx=self.config.stop_dx,
             lm_ga_settings=self.config.lm_ga_settings,
             display_progress=1,
+            max_iter=20,
         )
+        self.arts.avkCalc()
+        self.arts.covmat_ssCalc()
+        self.arts.covmat_soCalc()
+
+        # EXTRCT observation errors
+        self.arts.retrievalErrorsExtract()
+
+        dct = {
+            "id": self.attrs.id.values,
+            "pret": self.data.pret.values,
+            "xa": self.arts.xa.value,
+            "x": self.arts.x.value,
+            "fb": self.arts.f_backend.value,
+            "y": self.arts.y.value,
+            "yf": self.arts.yf.value,
+            "jacobian": self.arts.jacobian.value,
+            "avk": self.arts.avk.value,
+            "ss": self.arts.retrieval_ss.value,
+            "eo": self.arts.retrieval_eo.value,
+            "vmr": self.arts.vmr_field.value,
+        }
+        np.save("O3_O3.npy", dct, allow_pickle=True)

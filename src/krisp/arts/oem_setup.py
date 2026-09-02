@@ -1,5 +1,6 @@
 import numpy as np
 import pyarts
+from krisp.arts.tools import make_sx_o3
 
 
 class RetrievalOEMInit:
@@ -8,6 +9,7 @@ class RetrievalOEMInit:
     """
 
     def __init__(self, obj):
+        self.mask = obj.fmask
         self.data = obj.data
         self.arts = obj.arts
         self.attrs = obj.attrs
@@ -21,15 +23,17 @@ class RetrievalOEMInit:
         self.add_species(species="O2")
         self.add_polyfit()
         self.add_frequency_shift()
+        self.add_frequency_stretch()
+        self.add_sinefit()
         self.add_Se()
-
         self.arts.retrievalDefClose()
 
     def add_species(self, species):
         # will change
         match species:
             case "O3":
-                vec = np.full_like(self.data.pret.values, 0.5)
+                # vec = make_sx_o3(self.data.pret.values)
+                vec = np.full_like(self.data.pret.values, 0.9)
                 covmat = np.diag(vec)
                 spec = str(self.arts.abs_species.value[0])
             case "H2O":
@@ -60,9 +64,18 @@ class RetrievalOEMInit:
         self.arts.retrievalAddFreqShift(df=self.config.fshift_df)
         self.arts.covmat_sxAddBlock(block=self.config.fshift_cov)
 
+    def add_frequency_stretch(self):
+        self.arts.retrievalAddFreqStretch(df=20e3)
+        self.arts.covmat_sxAddBlock(block=self.config.fshift_cov)
+
+    def add_sinefit(self):
+        self.arts.retrievalAddSinefit(period_lengths=[300e6])
+        self.arts.covmat_sxAddBlock(block=[[10, 1], [100, 10]])
+
     def add_Se(self):
         f_clip = self.config.f_clip
-        vec = np.full_like(self.data.fb.values[f_clip:-f_clip], 0.7)
+        fillval = np.var(self.data.y.values[self.mask][f_clip : 2 * f_clip])
+        vec = np.full_like(self.data.fb.values[self.mask][f_clip:-f_clip], fillval)
         sparse_block = pyarts.arts.Sparse()
         self.arts.DiagonalMatrix(sparse_block, vec)
         self.arts.covmat_seAddBlock(block=sparse_block)

@@ -29,12 +29,10 @@ class RTandAtmosphereRetrieval:
         for s in self.config.abs_species:
             if "O3" in s:
                 fill = s + f"-*-{fs - 1e9}-{fe + 1e9}"
-                abs_species.append(fill)
-            elif "PWR" in s:
-                fill = s + f"-{fs - 1e9}-{fe + 1e9}"
-                abs_species.append(fill)
             else:
-                abs_species.append(s)
+                fill = s + f"-{fs - 1e9}-{fe + 1e9}"
+            abs_species.append(fill)
+
         self.arts.abs_speciesSet(species=np.array(abs_species))
         self.arts.abs_lines_per_speciesReadSpeciesSplitCatalog(basename=self.lines_path)
         self.arts.abs_cia_dataReadSpeciesSplitCatalog(basename=self.cia_path)
