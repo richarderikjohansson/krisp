@@ -7,6 +7,25 @@ from krisp.data.classes import Attributes, Configuration, GroupNotFoundError
 from typing import Tuple, Any, Dict
 from datetime import datetime, timedelta
 import tomllib
+from dataclasses import dataclass
+
+
+@dataclass
+class WaspamData:
+    f3: NDArray
+    f7: NDArray
+    f: NDArray
+    y3: NDArray
+    y7: NDArray
+    y: NDArray
+    apriori: NDArray
+    h2o: NDArray
+    o3: NDArray
+    temperature: NDArray
+    p: NDArray
+    start: int
+    mid: int
+    end: int
 
 
 class ConfigReader:
@@ -52,7 +71,8 @@ class DataReader:
     """
 
     def __init__(self, *args, **kwargs):
-        raise TypeError("DataReader cannot be instantiated. Use DataReader.load(path) instead.")
+        raise TypeError(
+            "DataReader cannot be instantiated. Use DataReader.load(path) instead.")
 
     @classmethod
     def load(
@@ -89,10 +109,12 @@ class DataReader:
         with h5py.File(path, "r") as fh:
             for grp_name in (group, "provenance"):
                 if grp_name not in fh:
-                    raise GroupNotFoundError(f"Group '{grp_name}' not found in {path}.")
+                    raise GroupNotFoundError(
+                        f"Group '{grp_name}' not found in {path}.")
 
             data = cls._group_to_dataset(fh[group], read_dims=True)
-            provenance = cls._group_to_dataset(fh["provenance"], read_dims=False)
+            provenance = cls._group_to_dataset(
+                fh["provenance"], read_dims=False)
 
         return data, provenance
 
@@ -107,7 +129,8 @@ class DataReader:
                 data = data.decode()
 
             dims = cls._read_dims(obj, data.ndim) if read_dims else ()
-            data_vars[name] = xr.DataArray(data, dims=dims, attrs=dict(obj.attrs))
+            data_vars[name] = xr.DataArray(
+                data, dims=dims, attrs=dict(obj.attrs))
         return xr.Dataset(data_vars, attrs=dict(grp.attrs))
 
     @staticmethod
@@ -126,3 +149,33 @@ def read_apriori_file(path: Path) -> Dict:
         for k, v in fh.items():
             dct[k] = {n: d[()] for n, d in v.items()}
     return dct
+
+
+class WaspamReader:
+    def __init__(self, fp):
+        self.fp = fp
+
+    def load_data(self):
+        with h5py.File(self.fp, "r") as h5:
+            comb = h5["combined_spec"]
+            met = h5["met"]
+            aux = h5["aux"]
+            w3 = h5["waspam3"]
+            w7 = h5["waspam7"]
+            self.data = WaspamData(
+                f3=w3["f"][()],
+                f7=w7["f"][()],
+                f=comb["f"][()],
+                y3=w3["y"][()],
+                y7=w7["y"][()],
+                y=comb["ycorr"][()],
+                h2o=met["h2o_profile"][()],
+                o3=met["o3_profile"][()],
+                apriori=met["apriori"][()],
+                temperature=met["temperature_profile"][()],
+                p=met["p"][()],
+                start=aux["start"][()],
+                end=aux["end"][()],
+                mid=aux["mid"][()],
+            )
+        return self.data

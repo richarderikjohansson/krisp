@@ -29,7 +29,8 @@ def set_defaults(ws, meas: Measurement):
     # %% agendas
     ws.ppath_agendaSet(option="FollowSensorLosPath")
     ws.iy_main_agendaSet(option="Emission")
-    ws.surface_rtprop_agendaSet(option="Specular_NoPol_ReflFix_SurfTFromt_surface")
+    ws.surface_rtprop_agendaSet(
+        option="Specular_NoPol_ReflFix_SurfTFromt_surface")
     ws.ppath_step_agendaSet(option="GeometricPath")
     ws.iy_space_agendaSet(option="CosmicBackground")
     ws.iy_surface_agendaSet(option="UseSurfaceRtprop")
@@ -234,8 +235,6 @@ def run_OEM(ws, meas: Measurement):
         max_iter=20,
         verbosity=10,
     )
-    res = ws.y.value - ws.yf.value
-    print(min(res), max(res))
     now = datetime.now()
     print(f"-- {now}: Done.")
 
@@ -243,11 +242,13 @@ def run_OEM(ws, meas: Measurement):
 def first_pass_wrapper(fp):
     obj = WaspamReader(fp=fp)
     data = obj.load_data()
-
+    home = Path.home()
+    lines_cat = home / ".cache/arts/arts-cat-data-2.6.18/lines/"
+    atm_cat = home / ".cache/arts/arts-xml-data-2.6.18/planets/Earth/Fascod/subarctic-winter/subarctic-winter"
     meas = Measurement(
         data=data,
-        lines_cat="/home/ric/.cache/arts/arts-cat-data-2.6.18/lines/",
-        atm_cat="/home/ric/.cache/arts/arts-xml-data-2.6.18/planets/Earth/Fascod/subarctic-winter/subarctic-winter",
+        lines_cat=str(lines_cat) + "/",
+        atm_cat=str(atm_cat),
         source=fp,
     )
     ws = pyarts.Workspace()
@@ -267,11 +268,13 @@ def save_retrieval(ws, fn):
     avk = ws.avk.value[0:n, 0:n]
     q = ws.x.value[0:n]
     qa = ws.xa.value[0:n]
+    residual = ws.y.value - ws.yf.value
     ds = xr.Dataset(
         data_vars={
             "y": (["f"], ws.y.value),
             "yf": (["f"], ws.yf.value),
             "yb": (["f"], ws.y_baseline.value),
+            "residual": (["f"], residual),
             "avk": (["p", "p"], avk),
             "q": (["p"], q),
             "qa": (["p"], qa),
@@ -282,3 +285,5 @@ def save_retrieval(ws, fn):
         },
     )
     ds.to_netcdf(fn)
+    now = datetime.now()
+    print(f"-- {now}: Saved data in {fn}")
