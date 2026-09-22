@@ -145,7 +145,7 @@ def set_retrieval_quantities(ws, meas: Measurement):
         ws.jacobianAdjustAndTransform()
 
     # -- HARDCODED xa_sx
-    sx = np.full_like(meas.data.p, 5e-6)
+    sx = np.full_like(meas.data.p, 5e-7)
     ws.retrievalAddAbsSpecies(
         species="H2O-161",
         covmat_block=pyarts.arts.Sparse(np.diag(sx)),
@@ -157,7 +157,7 @@ def set_retrieval_quantities(ws, meas: Measurement):
 
     # -- Polyfit
     poly_order = 4
-    poly_var = [1, 0.05, 0.05, 0.05, 0.05]
+    poly_var = [1, 10, 25, 25, 50]
     ws.retrievalAddPolyfit(
         poly_order=poly_order,
         no_pol_variation=0,
