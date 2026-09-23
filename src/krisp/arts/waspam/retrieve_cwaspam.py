@@ -100,7 +100,7 @@ def set_measurement(ws, meas: Measurement):
     ws.f_backend = meas.data.f
 
     # --- NOTE: HARDCODED!!! ---
-    yerr = np.full_like(meas.data.f, 0.05)
+    yerr = np.full_like(meas.data.f, 0.8)
     ws.covmat_seSet(covmat=pyarts.arts.Sparse(np.diag(yerr)))
     now = datetime.now()
     print(f"-- {now}: Successfully set measurements in arts")
@@ -157,7 +157,8 @@ def set_retrieval_quantities(ws, meas: Measurement):
 
     # -- Polyfit
     poly_order = 4
-    poly_var = [1, 10, 25, 25, 50]
+    # poly_var = [1, 10, 25, 25, 50]
+    poly_var = [1, 0.1, 0.1, 0.1, 0.1]
     ws.retrievalAddPolyfit(
         poly_order=poly_order,
         no_pol_variation=0,
@@ -183,6 +184,29 @@ def set_retrieval_quantities(ws, meas: Measurement):
     ws.xa.value = np.append(ws.xa.value, np.zeros(n_extra))
     now = datetime.now()
     print(f"-- {now}: Successfully set retrieval quantities in arts")
+
+
+def set_sinefit(ws, period_lengths, period_var):
+    elements = 2
+    sine_param = elements * len(period_lengths)
+    covmat_sine = pyarts.arts.Sparse(
+        np.diag([period_var] * elements),)
+
+    ws.retrievalAddSinefit(
+        period_lengths=[float(p) for p in period_lengths],
+        covmat_block=covmat_sine,
+        no_pol_variation=0,
+        no_los_variation=0,
+        no_mblock_variation=0,
+        sensor_response_pol_grid=ws.sensor_response_pol_grid.value,
+        sensor_response_dlos_grid=ws.sensor_response_dlos_grid.value
+    )
+    for p in period_lengths:
+        now = datetime.now()
+        print(f"-- {now}: Adding sine fit with period: {p / 1e6} MHz")
+
+    n = 2 * len(period_lengths)
+    ws.xa.value = np.append(ws.xa.value, np.zeros(n))
 
 
 def compute_checks(ws):
@@ -230,7 +254,7 @@ def run_OEM(ws, meas: Measurement):
     print(f"-- {now}: Starting retrieval on {meas.source}")
     ws.OEM(
         method="lm",
-        lm_ga_settings=[8, 2, 2, 512, 1, 99],
+        lm_ga_settings=[2, 2, 2, 1024, 1, 1024],
         display_progress=1,
         max_iter=20,
         verbosity=10,
