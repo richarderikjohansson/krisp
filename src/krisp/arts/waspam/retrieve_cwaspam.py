@@ -263,30 +263,6 @@ def run_OEM(ws, meas: Measurement):
     print(f"-- {now}: Done.")
 
 
-def first_pass_wrapper(fp):
-    obj = WaspamReader(fp=fp)
-    data = obj.load_data()
-    home = Path.home()
-    lines_cat = home / ".cache/arts/arts-cat-data-2.6.18/lines/"
-    atm_cat = home / ".cache/arts/arts-xml-data-2.6.18/planets/Earth/Fascod/subarctic-winter/subarctic-winter"
-    meas = Measurement(
-        data=data,
-        lines_cat=str(lines_cat) + "/",
-        atm_cat=str(atm_cat),
-        source=fp,
-    )
-    ws = pyarts.Workspace()
-    set_defaults(ws, meas)
-    set_atmosphere(ws, meas)
-    set_measurement(ws, meas)
-    set_sensor(ws, meas)
-    set_retrieval_quantities(ws, meas)
-    compute_checks(ws)
-    run_OEM(ws, meas)
-    compute_post_oem(ws)
-    return ws
-
-
 def save_retrieval(ws, fn):
     n = len(ws.p_grid.value)
     avk = ws.avk.value[0:n, 0:n]
@@ -299,7 +275,7 @@ def save_retrieval(ws, fn):
             "yf": (["f"], ws.yf.value),
             "yb": (["f"], ws.y_baseline.value),
             "residual": (["f"], residual),
-            "avk": (["p", "p"], avk),
+            "avk": (["p"], avk),
             "q": (["p"], q),
             "qa": (["p"], qa),
         },

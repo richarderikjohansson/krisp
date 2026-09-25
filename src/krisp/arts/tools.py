@@ -1,6 +1,12 @@
 import xarray as xr
 from pyarts.arts import GriddedField3, Tensor3
 import numpy as np
+from typhon.physics import pressure2height
+
+
+def get_z(pressure, temperature):
+    z = pressure2height(pressure, temperature)
+    return z
 
 
 def opacity_from_arts(data: xr.Dataset) -> float:
@@ -11,7 +17,8 @@ def make_sx_o3(p):
     w_min = 0.1
     p0 = 100.0
     k = 4.0
-    weights = w_min + (1 - w_min) / (1 + np.exp(-k * (np.log10(p0) - np.log10(p))))
+    weights = w_min + (1 - w_min) / \
+        (1 + np.exp(-k * (np.log10(p0) - np.log10(p))))
     return weights
 
 

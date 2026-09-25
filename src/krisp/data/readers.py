@@ -1,13 +1,15 @@
 import h5py
-from h5py import Dataset
 import xarray as xr
+import tomllib
+
+from dataclasses import dataclass
 from pathlib import Path, PosixPath
 from numpy.typing import NDArray
 from krisp.data.classes import Attributes, Configuration, GroupNotFoundError
+from krisp.physics.atmosphere import altitude_from_pressure
 from typing import Tuple, Any, Dict
 from datetime import datetime, timedelta
-import tomllib
-from dataclasses import dataclass
+from h5py import Dataset
 
 
 @dataclass
@@ -23,6 +25,7 @@ class WaspamData:
     o3: NDArray
     temperature: NDArray
     p: NDArray
+    z: NDArray
     start: int
     mid: int
     end: int
@@ -162,6 +165,8 @@ class WaspamReader:
             aux = h5["aux"]
             w3 = h5["waspam3"]
             w7 = h5["waspam7"]
+            z = altitude_from_pressure(
+                met["p"][()], met["temperature_profile"][()],)
             self.data = WaspamData(
                 f3=w3["f"][()],
                 f7=w7["f"][()],
@@ -174,6 +179,7 @@ class WaspamReader:
                 apriori=met["apriori"][()],
                 temperature=met["temperature_profile"][()],
                 p=met["p"][()],
+                z=z,
                 start=aux["start"][()],
                 end=aux["end"][()],
                 mid=aux["mid"][()],
