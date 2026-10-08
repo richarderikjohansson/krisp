@@ -17,6 +17,7 @@ class WaspamRetrieveMulti:
 
     def _load_measurement_and_config(self):
         self.meas = WaspamReader(fp=self.mfile).load_data()
+        self.f, self.f3, self.f7 = interp_spec(self.meas)
         self.config = ConfigReader.load(self.cfile)
 
     def _set_defaults(self):
@@ -32,15 +33,14 @@ class WaspamRetrieveMulti:
         # %% agendas
         self.ws.ppath_agendaSet(option="FollowSensorLosPath")
         self.ws.iy_main_agendaSet(option="Emission")
-        self.ws.surface_rtprop_agendaSet(
-            option="Specular_NoPol_ReflFix_SurfTFromt_surface")
+        self.ws.surface_rtprop_agendaSet(option="Specular_NoPol_ReflFix_SurfTFromt_surface")
         self.ws.ppath_step_agendaSet(option="GeometricPath")
         self.ws.iy_space_agendaSet(option="CosmicBackground")
         self.ws.iy_surface_agendaSet(option="UseSurfaceRtprop")
         self.ws.water_p_eq_agendaSet(option="MK05")
 
         # %% calculations
-        self.ws.iy_unit = "RJBT"
+        self.ws.iy_unit = "PlanckBT"
         self.ws.ppath_lmax = self.config["defaults"]["ppath_lmax"]
         self.ws.ppath_lraytrace = self.config["defaults"]["ppath_lraytrace"]
         self.ws.rt_integration_option = "default"
@@ -50,8 +50,7 @@ class WaspamRetrieveMulti:
         # %% species and line absorption
         # water vapour common isotopologue
         self.ws.abs_speciesSet(species=["H2O-161"])
-        self.ws.abs_lines_per_speciesReadSpeciesSplitCatalog(
-            basename=self.lines)
+        self.ws.abs_lines_per_speciesReadSpeciesSplitCatalog(basename=self.lines)
         self.ws.abs_lines_per_speciesCutoff(option="ByLine", value=10e9)
 
         # %% sensor
@@ -126,9 +125,9 @@ class WaspamRetrieveMulti:
         res = (fe - fs) / n
         self.ws.backend_channel_responseFlat(resolution=res)
         self.ws.sensor_response_pol_grid = np.array(
-            self.config["sensor"]["sensor_response_pol_grid"])
-        self.ws.sensor_response_dlos_grid = [
-            self.config["sensor"]["sensor_response_dlos_grid"]]
+            self.config["sensor"]["sensor_response_pol_grid"]
+        )
+        self.ws.sensor_response_dlos_grid = [self.config["sensor"]["sensor_response_dlos_grid"]]
 
         # -- CHECK THIS: Might be to simple
         self.ws.f_grid = np.linspace(fs - res, fe + res, n)
@@ -151,12 +150,12 @@ class WaspamRetrieveMulti:
             ws.VectorAddElementwise(ws.yf, ws.yf, ws.y_baseline)
             ws.jacobianAdjustAndTransform()
 
-        p = self.meas.p/1e2
+        p = self.meas.p / 1e2
         xa = self.meas.apriori
         sigma = []
 
         x = np.linspace(0, len(p), len(p))
-        scale = 0.1 + (0.6 / (1 + np.exp(-x/30))) - 0.35
+        scale = 0.1 + (0.6 / (1 + np.exp(-x / 30))) - 0.35
         sigma = scale * xa
 
         sigma = np.array(sigma)
@@ -225,7 +224,8 @@ class WaspamRetrieveMulti:
             period_var = self.config["retrieval"]["period_var"]
             elements = 2
             covmat_sine = pyarts.arts.Sparse(
-                np.diag([period_var] * elements),)
+                np.diag([period_var] * elements),
+            )
 
             self.ws.retrievalAddSinefit(
                 period_lengths=[float(p) for p in period_lengths],
@@ -234,11 +234,10 @@ class WaspamRetrieveMulti:
                 no_los_variation=0,
                 no_mblock_variation=0,
                 sensor_response_pol_grid=self.ws.sensor_response_pol_grid.value,
-                sensor_response_dlos_grid=self.ws.sensor_response_dlos_grid.value
+                sensor_response_dlos_grid=self.ws.sensor_response_dlos_grid.value,
             )
             for p in period_lengths:
-                self.logger.warning(
-                    f"Adding sine fit with period: {p / 1e6} MHz")
+                self.logger.warning(f"Adding sine fit with period: {p / 1e6} MHz")
 
             n = 2 * len(period_lengths)
             self.ws.xa.value = np.append(self.ws.xa.value, np.zeros(n))
@@ -330,10 +329,7 @@ class WaspamRetrieveMulti:
         diagnostics = self.ws.oem_diagnostics.value
         dxdy = self.ws.dxdy.value
         self.ws.MatrixCreate(name="se_matrix")
-        self.ws.MatrixFromCovarianceMatrix(
-            output=self.ws.se_matrix,
-            input=self.ws.covmat_se
-        )
+        self.ws.MatrixFromCovarianceMatrix(output=self.ws.se_matrix, input=self.ws.covmat_se)
         se = self.ws.se_matrix.value
         zgrid = self.ws.z_field.value.flatten()
 
@@ -352,13 +348,9 @@ class WaspamRetrieveMulti:
                 "covmat_so": (["p", "pk"], covmat_so),
                 "dxdy": (["x", "f"], dxdy),
                 "covmat_se": (["f", "fk"], se),
-                "z": (["p"], zgrid)
+                "z": (["p"], zgrid),
             },
-            coords={
-                "f": self.ws.f_backend.value,
-                "p": self.ws.p_grid.value,
-                "x": x
-            },
+            coords={"f": self.ws.f_backend.value, "p": self.ws.p_grid.value, "x": x},
         )
         ds.attrs = {
             "convergence": diagnostics[0],
@@ -366,8 +358,7 @@ class WaspamRetrieveMulti:
             "end_cost": diagnostics[2],
             "end_ycost": diagnostics[3],
             "iterations": diagnostics[4],
-            "timestamp": self.meas.mid
-
+            "timestamp": self.meas.mid,
         }
         ds.to_netcdf(outpath)
         outpath = Path(outpath)
@@ -381,3 +372,20 @@ def get_outdir():
     if not l2.exists():
         l2.mkdir(parents=True)
     return l2
+
+
+def interp_spec(data):
+    freq_h = data.f3
+    freq_v = data.f7
+    spec_h = data.y3
+    spec_v = data.y7
+
+    freq_common = freq_h
+    spec_h_common = spec_h
+
+    spec_v_common = np.interp(
+        freq_common,
+        freq_v,
+        spec_v,
+    )
+    return freq_common, spec_h_common, spec_v_common
