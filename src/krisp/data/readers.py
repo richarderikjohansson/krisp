@@ -185,3 +185,42 @@ class WaspamReader:
                 mid=aux["mid"][()],
             )
         return self.data
+
+
+def get_waspam_from_h5(fp: Path | str):
+    fp = Path(fp)
+    out = {}
+    with h5py.File(fp, "r") as h5:
+        for timestamp, data in h5.items():
+            ds = xr.Dataset(
+                data_vars={
+                    "avk": (["p", "pk"], data["avk"][()]),
+                    "jacobian": (["f", "p"], data["jacobian"][()]),
+                    "covmat_ss": (["p", "pk"], data["covmat_ss"][()]),
+                    "covmat_so": (["p", "pk"], data["covmat_so"][()]),
+                    "covmat_se": (["f", "fk"], data["covmat_se"][()]),
+                    "q": (["p"], data["q"][()]),
+                    "qa": (["p"], data["qa"][()]),
+                    "dxdy": (["x", "f"], data["dxdy"][()]),
+                    "z": (["p"], data["z"][()]),
+                    "y": (["f"], data["y"][()]),
+                    "yb": (["f"], data["yb"][()]),
+                    "yf": (["f"], data["yf"][()]),
+                    "residual": (["f"], data["residual"][()])
+                },
+                coords={
+                    "f": data["f"][()],
+                    "p": data["p"][()],
+                    "x": data["x"][()]
+                })
+            ds.attrs = {
+                "src": data["src"][()],
+                "convergence": data["convergence"][()],
+                "start_cost": data["start_cost"][()],
+                "end_cost": data["end_cost"][()],
+                "end_ycost": data["end_ycost"][()],
+                "iterations": data["iterations"][()],
+            }
+            out[int(timestamp)] = ds
+
+    return out

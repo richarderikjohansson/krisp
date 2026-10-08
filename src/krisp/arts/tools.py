@@ -1,5 +1,4 @@
-import xarray as xr
-from pyarts.arts import GriddedField3, Tensor3
+from pyarts.arts import GriddedField3, Tensor3, Vector
 import numpy as np
 from typhon.physics import pressure2height
 
@@ -7,10 +6,6 @@ from typhon.physics import pressure2height
 def get_z(pressure, temperature):
     z = pressure2height(pressure, temperature)
     return z
-
-
-def opacity_from_arts(data: xr.Dataset) -> float:
-    pass
 
 
 def make_sx_o3(p):
@@ -23,11 +18,12 @@ def make_sx_o3(p):
 
 
 def set_griddedfield3(pressure, latitude, longitude, data):
+    p = Vector(pressure)
     gf = GriddedField3()
     gf.set_grid_name(0, "Pressure")
     gf.set_grid_name(1, "Latitude")
     gf.set_grid_name(2, "Longitude")
-    gf.set_grid(0, pressure)
+    gf.set_grid(0, p)
     gf.set_grid(1, [latitude])
     gf.set_grid(2, [longitude])
 

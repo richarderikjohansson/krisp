@@ -1,8 +1,8 @@
 import logging
 
 
-def get_retrieval_logger() -> logging.Logger:
-    """Logger for retrievals
+def get_logger() -> logging.Logger:
+    """Logger
 
     :return: Logger object
     """

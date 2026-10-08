@@ -8,7 +8,7 @@ import xarray as xr
 from pathlib import Path
 
 
-class WaspamRetrieve:
+class WaspamRetrieveMulti:
     def __init__(self, mfile, cfile):
         self.mfile = mfile
         self.cfile = cfile
