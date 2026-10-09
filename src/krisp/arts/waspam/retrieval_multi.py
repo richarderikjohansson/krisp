@@ -14,10 +14,11 @@ class WaspamRetrieveMulti:
         self.cfile = cfile
         self.logger = get_logger()
         self.ws = pyarts.Workspace()
+        self.blocks = 2
 
     def _load_measurement_and_config(self):
         self.meas = WaspamReader(fp=self.mfile).load_data()
-        self.f, self.f3, self.f7 = interp_spec(self.meas)
+        self.f_common, self.y3_common, self.y7_common = interp_spec(self.meas)
         self.config = ConfigReader.load(self.cfile)
 
     def _set_defaults(self):
@@ -96,20 +97,24 @@ class WaspamRetrieveMulti:
         timestamp = self.meas.mid
         dt = datetime.fromtimestamp(timestamp)
         time = pyarts.arts.Time(dt)
-        arr_of_time = pyarts.arts.ArrayOfTime(1, time)
+        arr_of_time = pyarts.arts.ArrayOfTime(self.blocks, time)
         self.ws.sensor_time = arr_of_time
 
-        self.ws.y = self.meas.y + self.config["measurement"]["y_offset"]
+        y_concat = np.concatenate([self.y3_common, self.y7_common])
+        self.ws.y = y_concat
         self.ws.yf = []
-        self.ws.y_baseline = self.ws.y.value * 0
+        self.ws.y_baseline = y_concat * 0
         self.ws.f_backend = self.meas.f
 
-        fill = np.var(self.meas.y[0:100])
-        # yerr = np.full_like(
-        #    self.meas.f, self.config["measurement"]["yerr_const"],)
-        yerr = np.full_like(self.meas.f, fill)
+        # fill = np.var(self.meas.y[0:100])
+        fills = [np.full_like(y, np.var(y[0:100])) for y in zip(self.y3_common, self.y7_common)]
+        se_diag = np.concatenate(fills)
+        import scipy.sparse as sp
 
-        self.ws.covmat_seSet(covmat=pyarts.arts.Sparse(np.diag(yerr)))
+        self.ws.covmat_seSet(covmat=pyarts.arts.Sparse(sp.diags(se_diag, format="csr")))
+        self.ws.covmat_seAddInverseBlock(
+            block=pyarts.arts.Sparse(sp.diags(1.0 / se_diag, format="csr"))
+        )
         self.logger.info("Successfully set measurements in arts")
 
     def _set_sensor(self):
@@ -130,9 +135,14 @@ class WaspamRetrieveMulti:
         self.ws.sensor_response_dlos_grid = [self.config["sensor"]["sensor_response_dlos_grid"]]
 
         # -- CHECK THIS: Might be to simple
-        self.ws.f_grid = np.linspace(fs - res, fe + res, n)
-        self.ws.sensor_pos = [[self.config["sensor"]["sensor_pos"]]]
-        self.ws.sensor_los = [[self.config["sensor"]["sensor_los"]]]
+        # self.ws.f_grid = np.linspace(fs - res, fe + res, n)
+        fs = self.f_common[0]
+        fe = self.f_common[-1]
+        res = (fe - fs) / (2 * n)
+        fg = np.linspace(fs - res, fe + res, 2 * n)
+        self.ws.f_grid = fg
+        self.ws.sensor_pos = np.array([[self.config["sensor"]["sensor_pos"]] * self.blocks]).T
+        self.ws.sensor_los = np.array([[self.config["sensor"]["sensor_los"]] * self.blocks]).T
         self.ws.sensor_response_agenda.value.execute(self.ws)
         self.logger.info("Successfully set sensor variables in arts")
 
@@ -205,7 +215,7 @@ class WaspamRetrieveMulti:
         )
 
         for v in self.config["retrieval"]["poly_var"]:
-            self.ws.covmat_sxAddBlock(block=np.diag([v]))
+            self.ws.covmat_sxAddBlock(block=np.diag([v] * self.blocks))
 
         # -- Frequency shift
         fs_df = self.config["retrieval"]["fs_df"]
@@ -217,12 +227,10 @@ class WaspamRetrieveMulti:
             covmat_inv_block=[[fs_inv_block]],
             df=fs_df,
         )
-        n_extra = (self.config["retrieval"]["poly_order"] + 1) + 1
-        self.ws.xa.value = np.append(self.ws.xa.value, np.zeros(n_extra))
         if "period_lengths" in self.config["retrieval"].keys():
             period_lengths = self.config["retrieval"]["period_lengths"]
             period_var = self.config["retrieval"]["period_var"]
-            elements = 2
+            elements = 2 * self.blocks
             covmat_sine = pyarts.arts.Sparse(
                 np.diag([period_var] * elements),
             )
@@ -238,9 +246,15 @@ class WaspamRetrieveMulti:
             )
             for p in period_lengths:
                 self.logger.warning(f"Adding sine fit with period: {p / 1e6} MHz")
+            n_sine = len(self.config["retrieval"]["period_lengths"]) * elements
+        else:
+            n_sine = 0
 
-            n = 2 * len(period_lengths)
-            self.ws.xa.value = np.append(self.ws.xa.value, np.zeros(n))
+        n_poly = self.config["retrieval"]["poly_order"] + 1
+        n_poly = self.blocks * n_poly
+        n_extra = n_sine + n_poly + 1
+
+        self.ws.xa.value = np.append(self.ws.xa.value, np.zeros(n_extra))
 
         self.logger.info("Successfully set retrieval quantities in arts")
 
@@ -314,7 +328,9 @@ class WaspamRetrieveMulti:
         dt = datetime.fromtimestamp(self.meas.mid)
         dt = dt.isoformat()
         outdir = get_outdir()
-        outpath = f"{outdir}/{dt}.nc"
+
+        # CHANGE BACK TO nc
+        outpath = f"{outdir}/{dt}.npy"
 
         # get data from WSV
         n = len(self.ws.p_grid.value)
@@ -333,34 +349,45 @@ class WaspamRetrieveMulti:
         se = self.ws.se_matrix.value
         zgrid = self.ws.z_field.value.flatten()
 
-        # make dataset
-        ds = xr.Dataset(
-            data_vars={
-                "y": (["f"], self.ws.y.value),
-                "yf": (["f"], self.ws.yf.value),
-                "yb": (["f"], self.ws.y_baseline.value),
-                "residual": (["f"], residual),
-                "avk": (["p", "pk"], avk),
-                "q": (["p"], q),
-                "qa": (["p"], qa),
-                "jacobian": (["f", "p"], jacobian),
-                "covmat_ss": (["p", "pk"], covmat_ss),
-                "covmat_so": (["p", "pk"], covmat_so),
-                "dxdy": (["x", "f"], dxdy),
-                "covmat_se": (["f", "fk"], se),
-                "z": (["p"], zgrid),
-            },
-            coords={"f": self.ws.f_backend.value, "p": self.ws.p_grid.value, "x": x},
-        )
-        ds.attrs = {
-            "convergence": diagnostics[0],
-            "start_cost": diagnostics[1],
-            "end_cost": diagnostics[2],
-            "end_ycost": diagnostics[3],
-            "iterations": diagnostics[4],
-            "timestamp": self.meas.mid,
+        data = {
+            "y": np.array(self.ws.y.value),
+            "yf": np.array(self.ws.yf.value),
+            "f": np.array(self.ws.f_backend.value),
+            "x": self.ws.x.value,
+            "xa": self.ws.xa.value,
+            "p": self.ws.p_grid.value,
         }
-        ds.to_netcdf(outpath)
+
+        np.save(outpath, data, allow_pickle=True)
+
+        #        # make dataset
+        #        ds = xr.Dataset(
+        #            data_vars={
+        #                "y": (["f"], self.ws.y.value),
+        #                "yf": (["f"], self.ws.yf.value),
+        #                "yb": (["f"], self.ws.y_baseline.value),
+        #                "residual": (["f"], residual),
+        #                "avk": (["p", "pk"], avk),
+        #                "q": (["p"], q),
+        #                "qa": (["p"], qa),
+        #                "jacobian": (["f", "p"], jacobian),
+        #                "covmat_ss": (["p", "pk"], covmat_ss),
+        #                "covmat_so": (["p", "pk"], covmat_so),
+        #                "dxdy": (["x", "f"], dxdy),
+        #                "covmat_se": (["f", "fk"], se),
+        #                "z": (["p"], zgrid),
+        #            },
+        #            coords={"f": self.ws.f_backend.value, "p": self.ws.p_grid.value, "x": x},
+        #        )
+        #        ds.attrs = {
+        #            "convergence": diagnostics[0],
+        #            "start_cost": diagnostics[1],
+        #            "end_cost": diagnostics[2],
+        #            "end_ycost": diagnostics[3],
+        #            "iterations": diagnostics[4],
+        #            "timestamp": self.meas.mid,
+        #        }
+        #        ds.to_netcdf(outpath)
         outpath = Path(outpath)
         self.logger.info(f"Saved retrieval in {outpath}")
 

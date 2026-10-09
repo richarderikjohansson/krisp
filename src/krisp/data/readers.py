@@ -74,8 +74,7 @@ class DataReader:
     """
 
     def __init__(self, *args, **kwargs):
-        raise TypeError(
-            "DataReader cannot be instantiated. Use DataReader.load(path) instead.")
+        raise TypeError("DataReader cannot be instantiated. Use DataReader.load(path) instead.")
 
     @classmethod
     def load(
@@ -112,12 +111,10 @@ class DataReader:
         with h5py.File(path, "r") as fh:
             for grp_name in (group, "provenance"):
                 if grp_name not in fh:
-                    raise GroupNotFoundError(
-                        f"Group '{grp_name}' not found in {path}.")
+                    raise GroupNotFoundError(f"Group '{grp_name}' not found in {path}.")
 
             data = cls._group_to_dataset(fh[group], read_dims=True)
-            provenance = cls._group_to_dataset(
-                fh["provenance"], read_dims=False)
+            provenance = cls._group_to_dataset(fh["provenance"], read_dims=False)
 
         return data, provenance
 
@@ -132,8 +129,7 @@ class DataReader:
                 data = data.decode()
 
             dims = cls._read_dims(obj, data.ndim) if read_dims else ()
-            data_vars[name] = xr.DataArray(
-                data, dims=dims, attrs=dict(obj.attrs))
+            data_vars[name] = xr.DataArray(data, dims=dims, attrs=dict(obj.attrs))
         return xr.Dataset(data_vars, attrs=dict(grp.attrs))
 
     @staticmethod
@@ -166,13 +162,15 @@ class WaspamReader:
             w3 = h5["waspam3"]
             w7 = h5["waspam7"]
             z = altitude_from_pressure(
-                met["p"][()], met["temperature_profile"][()],)
+                met["p"][()],
+                met["temperature_profile"][()],
+            )
             self.data = WaspamData(
                 f3=w3["f"][()],
                 f7=w7["f"][()],
                 f=comb["f"][()],
-                y3=w3["y"][()],
-                y7=w7["y"][()],
+                y3=w3["ycorr"][()],
+                y7=w7["ycorr"][()],
                 y=comb["ycorr"][()],
                 h2o=met["h2o_profile"][()],
                 o3=met["o3_profile"][()],
@@ -206,13 +204,10 @@ def get_waspam_from_h5(fp: Path | str):
                     "y": (["f"], data["y"][()]),
                     "yb": (["f"], data["yb"][()]),
                     "yf": (["f"], data["yf"][()]),
-                    "residual": (["f"], data["residual"][()])
+                    "residual": (["f"], data["residual"][()]),
                 },
-                coords={
-                    "f": data["f"][()],
-                    "p": data["p"][()],
-                    "x": data["x"][()]
-                })
+                coords={"f": data["f"][()], "p": data["p"][()], "x": data["x"][()]},
+            )
             ds.attrs = {
                 "src": data["src"][()],
                 "convergence": data["convergence"][()],
