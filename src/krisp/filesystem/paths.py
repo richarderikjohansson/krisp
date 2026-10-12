@@ -1,6 +1,7 @@
-from pathlib import Path
 import pyarts
+import numpy as np
 from krisp._const import PYARTS_VERSION
+from pathlib import Path
 from krisp.filesystem._const import ARTS_SUMMER_ATM
 from krisp.filesystem._const import ARTS_WINTER_ATM
 from krisp.filesystem._const import ARTS_LINES
@@ -95,3 +96,10 @@ def find_apriori(config: Configuration) -> Path:
         name = file.name
         if target in name:
             return file
+
+
+def find_kimra_files():
+    home = Path.home()
+    databear = home / "databear"
+    kimra = databear / "h5" / "KIMRA"
+    return np.array([f for f in kimra.rglob(pattern="*")])
