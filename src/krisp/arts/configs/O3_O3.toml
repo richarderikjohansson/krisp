@@ -14,7 +14,7 @@ f_clip = 100
 
 # atmosphere and radiative transfer
 target = "O3"
-abs_species = ["O3", "H2O-PWR2022", "O2-PWR2022", "N2-SelfContStandardType"]
+abs_species = ["O3", "H2O-PWR2022", "O2-PWR2022", "N2-SelfContStandardType", "HNO3"]
 #abs_species = ["O3", "H2O-PWR2022", "O2-PWR2022"]
 atmosphere_dim = 1
 stokes_dim = 1

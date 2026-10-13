@@ -89,9 +89,9 @@ def find_default_configs(attrs: Dataset) -> Path | None:
             return config
 
 
-def find_apriori(config: Configuration) -> Path:
+def find_apriori(config) -> Path:
     apridir = files("krisp.arts").joinpath("data")
-    target = config.target.lower()
+    target = config["retrieval"]["target"].lower()
     for file in apridir.iterdir():
         name = file.name
         if target in name:

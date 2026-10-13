@@ -81,6 +81,7 @@ class DataReader:
         cls,
         file: str | Path,
         group: str = "measurement",
+        lims: None | Tuple = None,
     ) -> Tuple[xr.Dataset, xr.Dataset]:
         """
         Load data and provenance groups from an .h5 file.
@@ -115,6 +116,10 @@ class DataReader:
 
             data = cls._group_to_dataset(fh[group], read_dims=True)
             provenance = cls._group_to_dataset(fh["provenance"], read_dims=False)
+            if slice is not None:
+                s = lims[0]
+                e = lims[-1]
+                data = data.isel(fb=slice(s, e))
 
         return data, provenance
 
