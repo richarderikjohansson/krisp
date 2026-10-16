@@ -8,6 +8,7 @@ from datetime import datetime
 import xarray as xr
 from pathlib import Path
 from h5py import File
+from importlib.resources import files
 
 
 class KimraRetrieve:
@@ -17,17 +18,16 @@ class KimraRetrieve:
         self.logger = get_logger()
         self.ws = pyarts.Workspace()
         self.lims = lims
+        self.ddir = get_data_dir()
 
     def load_measurement_and_config(self):
-        self.meas, self.attrs = DataReader.load(file=self.mfile, lims=self.lims)
+        self.meas, self.attrs = DataReader.load(
+            file=self.mfile, lims=self.lims)
         self.config = ConfigReader.load(self.cfile)
         self.month = datetime.fromtimestamp(self.attrs.id.values).month
 
     def _set_defaults(self):
         # initialise workspace variables for retrieval
-        self.ws.x = np.array([])
-        self.ws.yf = np.array([])
-        self.ws.jacobian = np.array([[]])
 
         # initialise retrieval framework
         self.ws.jacobianInit()
@@ -35,12 +35,14 @@ class KimraRetrieve:
 
         # %% agendas
         self.ws.ppath_agendaSet(option="FollowSensorLosPath")
-        self.ws.iy_main_agendaSet(option="Emission")
-        self.ws.surface_rtprop_agendaSet(option="Specular_NoPol_ReflFix_SurfTFromt_surface")
+        self.ws.iy_main_agendaSet(option="Clearsky")
+        self.ws.surface_rtprop_agendaSet(
+            option="Specular_NoPol_ReflFix_SurfTFromt_surface")
         self.ws.ppath_step_agendaSet(option="GeometricPath")
         self.ws.iy_space_agendaSet(option="CosmicBackground")
         self.ws.iy_surface_agendaSet(option="UseSurfaceRtprop")
         self.ws.water_p_eq_agendaSet(option="MK05")
+        self.ws.gas_scattering_agendaSet()
 
         # %% calculations
         self.ws.iy_unit = "PlanckBT"
@@ -52,17 +54,19 @@ class KimraRetrieve:
 
         # %% species and line absorption
         # water vapour common isotopologue
+
         self.ws.abs_speciesSet(
             species=[
                 "O3",
-                "H2O-PWR2022",
-                "O2-PWR2022",
-                "N2-SelfContStandardType",
+                "H2O",
+                "O2",
                 "HNO3",
             ]
         )
-        self.ws.abs_lines_per_speciesReadSpeciesSplitCatalog(basename=self.lines)
-        self.ws.abs_lines_per_speciesCutoff(option="ByLine", value=10e9)
+        self.ws.abs_lines_per_speciesReadSpeciesSplitCatalog(
+            basename=self.lines)
+        self.ws.abs_lines_per_speciesCutoff(option="ByLine", value=750e9)
+        self.ws.abs_lines_per_speciesTurnOffLineMixing()
 
         # %% sensor
         self.ws.stokes_dim = 1
@@ -118,8 +122,7 @@ class KimraRetrieve:
         self.ws.sensor_time = arr_of_time
 
         self.ws.y = self.meas.y.values
-        self.ws.yf = []
-        self.ws.y_baseline = self.ws.y.value * 0
+        # self.ws.y_baseline = self.ws.y.value * 0
         self.ws.f_backend = self.meas.fb.values
 
         fill = np.var(self.meas.y.values[0:100])
@@ -143,10 +146,11 @@ class KimraRetrieve:
         self.ws.sensor_response_pol_grid = np.array(
             self.config["sensor"]["sensor_response_pol_grid"]
         )
-        self.ws.sensor_response_dlos_grid = [self.config["sensor"]["sensor_response_dlos_grid"]]
+        self.ws.sensor_response_dlos_grid = [
+            self.config["sensor"]["sensor_response_dlos_grid"]]
 
         # -- CHECK THIS: Might be to simple
-        self.ws.f_grid = np.linspace(fs - res, fe + res, n)
+        self.ws.f_grid = np.linspace(fs - res, fe + res, 5000)
         self.ws.sensor_pos = [[self.config["sensor"]["sensor_pos"]]]
         self.ws.sensor_los = [[self.attrs.za.values]]
         self.ws.sensor_response_agenda.value.execute(self.ws)
@@ -159,17 +163,42 @@ class KimraRetrieve:
         @pyarts.workspace.arts_agenda(ws=self.ws, set_agenda=True)
         def inversion_iterate_agenda(ws):
             ws.Ignore(ws.inversion_iteration_counter)
-            ws.xClip(ijq=0, limit_low=clip_lo, limit_high=clip_hi)
+            # ws.xClip(ijq=0, limit_low=clip_lo, limit_high=clip_hi)
+            ws.vmr_fieldClip(species="ALL", limit_low=0)
             ws.x2artsAtmAndSurf()
             ws.x2artsSensor()
             ws.yCalc(y=ws.yf)
             ws.VectorAddElementwise(ws.yf, ws.yf, ws.y_baseline)
             ws.jacobianAdjustAndTransform()
 
-        sx = make_sx_o3(self.ws.p_grid.value)
+        # o3
+        # sx = make_sx_o3(self.ws.p_grid.value / 1e2)
+        sx = np.full_like(self.ws.p_grid.value, 0.5)
         self.ws.retrievalAddAbsSpecies(
             species="O3",
             covmat_block=pyarts.arts.Sparse(np.diag(sx)),
+            unit="rel",
+            g1=self.ws.p_grid,
+            g2=self.ws.lat_grid.value,
+            g3=self.ws.lon_grid.value,
+        )
+        # h2o
+        sx = np.full_like(self.ws.p_grid.value, 0.8)
+        self.ws.retrievalAddAbsSpecies(
+            species="H2O",
+            covmat_block=pyarts.arts.Sparse(np.diag(sx)),
+            unit="rel",
+            g1=self.ws.p_grid,
+            g2=self.ws.lat_grid.value,
+            g3=self.ws.lon_grid.value,
+        )
+
+        # o2
+        sx = np.full_like(self.ws.p_grid.value, 0.8)
+        self.ws.retrievalAddAbsSpecies(
+            species="O2",
+            covmat_block=pyarts.arts.Sparse(np.diag(sx)),
+            unit="rel",
             g1=self.ws.p_grid,
             g2=self.ws.lat_grid.value,
             g3=self.ws.lon_grid.value,
@@ -215,28 +244,43 @@ class KimraRetrieve:
                 sensor_response_dlos_grid=self.ws.sensor_response_dlos_grid.value,
             )
             for p in period_lengths:
-                self.logger.warning(f"Adding sine fit with period: {p / 1e6} MHz")
+                self.logger.warning(
+                    f"Adding sine fit with period: {p / 1e6} MHz")
 
         self.logger.info("Successfully set retrieval quantities in arts")
 
     def _compute_checks(self):
         """touch unused fields, close the retrieval definition and run the checks."""
 
-        self.ws.Touch(self.ws.rtp_mag)  # magnetic field
-        self.ws.Touch(self.ws.rtp_los)  # line of sight
-        self.ws.Touch(self.ws.rtp_pressure)  # pressure
-        self.ws.Touch(self.ws.rtp_temperature)  # temperature
-        self.ws.Touch(self.ws.rtp_nlte)  # NLTE temperature ratio
-        self.ws.Touch(self.ws.rtp_vmr)  # volume mixing ratio
+        # self.ws.Touch(self.ws.rtp_mag)  # magnetic field
+        # self.ws.Touch(self.ws.rtp_los)  # line of sight
+        # self.ws.Touch(self.ws.rtp_pressure)  # pressure
+        # self.ws.Touch(self.ws.rtp_temperature)  # temperature
+        # self.ws.Touch(self.ws.rtp_nlte)  # NLTE temperature ratio
+        # self.ws.Touch(self.ws.rtp_vmr)  # volume mixing ratio
 
-        self.ws.Touch(self.ws.wind_u_field)
-        self.ws.Touch(self.ws.wind_v_field)
-        self.ws.Touch(self.ws.wind_w_field)
-        self.ws.Touch(self.ws.time)
+        # self.ws.Touch(self.ws.wind_u_field)
+        # self.ws.Touch(self.ws.wind_v_field)
+        # self.ws.Touch(self.ws.wind_w_field)
+        # self.ws.Touch(self.ws.time)
         self.ws.cloudboxOff()
 
-        # compute checks
-        self.ws.propmat_clearsky_agendaAuto()
+        # compute checks and load abslookup
+        it = self.ddir.rglob("*")
+        found = False
+        for file in it:
+            name = file.name
+            if name == f"{self.suffix}_abslookup.xml":
+                found = True
+                self.ws.ReadXML(self.ws.abs_lookup, str(file))
+                self.logger.info(f"Read abslookup for {
+                                 self.suffix} from {file}")
+                self.ws.abs_lookupAdapt()
+                self.ws.propmat_clearsky_agendaAuto(use_abs_lookup=1)
+        if not found:
+            self.logger.info(
+                f"Could not find abslookup file for {self.suffix}")
+            self.ws.propmat_clearsky_agendaAuto()
         self.ws.atmgeom_checkedCalc()
         self.ws.lbl_checkedCalc()
         self.ws.atmfields_checkedCalc()
@@ -245,10 +289,15 @@ class KimraRetrieve:
         self.ws.propmat_clearsky_agenda_checkedCalc()
 
         # close the retrieval definition and prepare the related self.wsVs
-        self.ws.xaStandard()
         self.ws.retrievalDefClose()
+        self.ws.xaStandard()
 
     def _run_OEM(self):
+        self.ws.x = []
+        self.ws.jacobian = []
+        self.ws.abs_f_interp_order = 1
+        self.ws.yf = []
+
         self.logger.info(f"Starting retrieval on {self.mfile}")
         self.ws.OEM(
             method="lm",
@@ -268,7 +317,7 @@ class KimraRetrieve:
     def _save_retrieval(self):
 
         # set path
-        dt = datetime.fromtimestamp(self.attrs.id)
+        dt = datetime.fromtimestamp(self.attrs.id.values)
         dt = dt.isoformat()
         outdir = get_outdir()
         outpath = f"{outdir}/{dt}_{self.suffix}.nc"
@@ -279,14 +328,15 @@ class KimraRetrieve:
         covmat_so = self.ws.covmat_so.value[0:n, 0:n]
         covmat_ss = self.ws.covmat_ss.value[0:n, 0:n]
         x = self.ws.x.value
-        o3a = self.ws.vmr_fields.value[0][0:n]
+        o3a = self.ws.vmr_field.value[0, :, 0, 0]
         o3 = x[0:n] * o3a
         jacobian = self.ws.jacobian.value[:, 0:n]
         residual = self.ws.y.value - self.ws.yf.value
         diagnostics = self.ws.oem_diagnostics.value
         dxdy = self.ws.dxdy.value
         self.ws.MatrixCreate(name="se_matrix")
-        self.ws.MatrixFromCovarianceMatrix(output=self.ws.se_matrix, input=self.ws.covmat_se)
+        self.ws.MatrixFromCovarianceMatrix(
+            output=self.ws.se_matrix, input=self.ws.covmat_se)
         se = self.ws.se_matrix.value
         zgrid = self.ws.z_field.value.flatten()
 
@@ -303,11 +353,12 @@ class KimraRetrieve:
                 "jacobian": (["f", "p"], jacobian),
                 "covmat_ss": (["p", "pk"], covmat_ss),
                 "covmat_so": (["p", "pk"], covmat_so),
-                "dxdy": (["x", "f"], dxdy),
-                "covmat_se": (["f", "fk"], se),
+                # "dxdy": (["x", "f"], dxdy),
+                # "covmat_se": (["f", "fk"], se),
                 "z": (["p"], zgrid),
             },
-            coords={"f": self.ws.f_backend.value, "p": self.ws.p_grid.value, "x": x},
+            coords={"f": self.ws.f_backend.value,
+                    "p": self.ws.p_grid.value, "x": x},
         )
         ds.attrs = {
             "convergence": diagnostics[0],
@@ -325,7 +376,8 @@ class KimraRetrieve:
         self.meas = self.meas.sel(fb=slice(start, end))
         self.suffix = suffix
         self.logger.info(
-            f"Loaded and sliced data for {self.suffix} (f: {self.meas.fb.values[0] / 1e9}-{self.meas.fb.values[-1] / 1e9} GHz )"
+            f"Loaded and sliced data for {self.suffix} (f: {
+                self.meas.fb.values[0] / 1e9}-{self.meas.fb.values[-1] / 1e9} GHz )"
         )
 
     def _get_catalogue_data(self):
@@ -350,8 +402,13 @@ class KimraRetrieve:
 
 def get_outdir():
     home = Path.home()
-    wp = home / "Data" / "waspam"
+    wp = home / "Data" / "kimra"
     l2 = wp / "L2"
     if not l2.exists():
         l2.mkdir(parents=True)
     return l2
+
+
+def get_data_dir():
+    ddir = files("krisp.arts").joinpath("data")
+    return Path(ddir)

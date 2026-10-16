@@ -32,7 +32,7 @@ poly_covs = [[0.5], [1.4]]
 
 # OEM frequency shift
 fshift_df = 7e3
-fshift_cov = 10000
+fshift_cov = 1e6
 
 # OEM setup
 f_interp_order = 1

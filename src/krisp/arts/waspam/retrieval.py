@@ -32,7 +32,8 @@ class WaspamRetrieve:
         # %% agendas
         self.ws.ppath_agendaSet(option="FollowSensorLosPath")
         self.ws.iy_main_agendaSet(option="Emission")
-        self.ws.surface_rtprop_agendaSet(option="Specular_NoPol_ReflFix_SurfTFromt_surface")
+        self.ws.surface_rtprop_agendaSet(
+            option="Specular_NoPol_ReflFix_SurfTFromt_surface")
         self.ws.ppath_step_agendaSet(option="GeometricPath")
         self.ws.iy_space_agendaSet(option="CosmicBackground")
         self.ws.iy_surface_agendaSet(option="UseSurfaceRtprop")
@@ -49,7 +50,8 @@ class WaspamRetrieve:
         # %% species and line absorption
         # water vapour common isotopologue
         self.ws.abs_speciesSet(species=["H2O-161"])
-        self.ws.abs_lines_per_speciesReadSpeciesSplitCatalog(basename=self.lines)
+        self.ws.abs_lines_per_speciesReadSpeciesSplitCatalog(
+            basename=self.lines)
         self.ws.abs_lines_per_speciesCutoff(option="ByLine", value=10e9)
 
         # %% sensor
@@ -126,7 +128,8 @@ class WaspamRetrieve:
         self.ws.sensor_response_pol_grid = np.array(
             self.config["sensor"]["sensor_response_pol_grid"]
         )
-        self.ws.sensor_response_dlos_grid = [self.config["sensor"]["sensor_response_dlos_grid"]]
+        self.ws.sensor_response_dlos_grid = [
+            self.config["sensor"]["sensor_response_dlos_grid"]]
 
         # -- CHECK THIS: Might be to simple
         self.ws.f_grid = np.linspace(fs - res, fe + res, n)
@@ -149,15 +152,16 @@ class WaspamRetrieve:
             ws.VectorAddElementwise(ws.yf, ws.yf, ws.y_baseline)
             ws.jacobianAdjustAndTransform()
 
-        p = self.meas.p / 1e2
-        xa = self.meas.apriori
-        sigma = []
-
-        x = np.linspace(0, len(p), len(p))
-        scale = 0.1 + (0.6 / (1 + np.exp(-x / 30))) - 0.35
-        sigma = scale * xa
-
-        sigma = np.array(sigma)
+#        p = self.meas.p / 1e2
+#        xa = self.meas.apriori
+#        sigma = []
+#
+#        x = np.linspace(0, len(p), len(p))
+#        scale = 0.1 + (0.6 / (1 + np.exp(-x / 30))) - 0.35
+#        sigma = scale * xa
+#
+#        sigma = np.array(sigma)
+        sigma = self.meas.sx_diag
         self.ws.retrievalAddAbsSpecies(
             species="H2O-161",
             covmat_block=pyarts.arts.Sparse(np.diag(sigma**2)),
@@ -236,7 +240,8 @@ class WaspamRetrieve:
                 sensor_response_dlos_grid=self.ws.sensor_response_dlos_grid.value,
             )
             for p in period_lengths:
-                self.logger.warning(f"Adding sine fit with period: {p / 1e6} MHz")
+                self.logger.warning(
+                    f"Adding sine fit with period: {p / 1e6} MHz")
 
             n = 2 * len(period_lengths)
             self.ws.xa.value = np.append(self.ws.xa.value, np.zeros(n))
@@ -328,7 +333,8 @@ class WaspamRetrieve:
         diagnostics = self.ws.oem_diagnostics.value
         dxdy = self.ws.dxdy.value
         self.ws.MatrixCreate(name="se_matrix")
-        self.ws.MatrixFromCovarianceMatrix(output=self.ws.se_matrix, input=self.ws.covmat_se)
+        self.ws.MatrixFromCovarianceMatrix(
+            output=self.ws.se_matrix, input=self.ws.covmat_se)
         se = self.ws.se_matrix.value
         zgrid = self.ws.z_field.value.flatten()
 
@@ -349,7 +355,8 @@ class WaspamRetrieve:
                 "covmat_se": (["f", "fk"], se),
                 "z": (["p"], zgrid),
             },
-            coords={"f": self.ws.f_backend.value, "p": self.ws.p_grid.value, "x": x},
+            coords={"f": self.ws.f_backend.value,
+                    "p": self.ws.p_grid.value, "x": x},
         )
         ds.attrs = {
             "convergence": diagnostics[0],

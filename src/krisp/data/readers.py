@@ -21,6 +21,7 @@ class WaspamData:
     y7: NDArray
     y: NDArray
     apriori: NDArray
+    sx_diag: NDArray
     h2o: NDArray
     o3: NDArray
     temperature: NDArray
@@ -74,7 +75,8 @@ class DataReader:
     """
 
     def __init__(self, *args, **kwargs):
-        raise TypeError("DataReader cannot be instantiated. Use DataReader.load(path) instead.")
+        raise TypeError(
+            "DataReader cannot be instantiated. Use DataReader.load(path) instead.")
 
     @classmethod
     def load(
@@ -112,11 +114,14 @@ class DataReader:
         with h5py.File(path, "r") as fh:
             for grp_name in (group, "provenance"):
                 if grp_name not in fh:
-                    raise GroupNotFoundError(f"Group '{grp_name}' not found in {path}.")
+                    raise GroupNotFoundError(
+                        f"Group '{grp_name}' not found in {path}.")
 
             data = cls._group_to_dataset(fh[group], read_dims=True)
-            provenance = cls._group_to_dataset(fh["provenance"], read_dims=False)
-            if slice is not None:
+            provenance = cls._group_to_dataset(
+                fh["provenance"], read_dims=False)
+            print(lims)
+            if lims is not None:
                 s = lims[0]
                 e = lims[-1]
                 data = data.isel(fb=slice(s, e))
@@ -134,7 +139,8 @@ class DataReader:
                 data = data.decode()
 
             dims = cls._read_dims(obj, data.ndim) if read_dims else ()
-            data_vars[name] = xr.DataArray(data, dims=dims, attrs=dict(obj.attrs))
+            data_vars[name] = xr.DataArray(
+                data, dims=dims, attrs=dict(obj.attrs))
         return xr.Dataset(data_vars, attrs=dict(grp.attrs))
 
     @staticmethod
@@ -180,6 +186,7 @@ class WaspamReader:
                 h2o=met["h2o_profile"][()],
                 o3=met["o3_profile"][()],
                 apriori=met["apriori"][()],
+                sx_diag=met["sx_diag"][()],
                 temperature=met["temperature_profile"][()],
                 p=met["p"][()],
                 z=z,
@@ -211,7 +218,8 @@ def get_waspam_from_h5(fp: Path | str):
                     "yf": (["f"], data["yf"][()]),
                     "residual": (["f"], data["residual"][()]),
                 },
-                coords={"f": data["f"][()], "p": data["p"][()], "x": data["x"][()]},
+                coords={"f": data["f"][()], "p": data["p"]
+                        [()], "x": data["x"][()]},
             )
             ds.attrs = {
                 "src": data["src"][()],
