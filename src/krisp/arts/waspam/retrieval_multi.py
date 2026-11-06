@@ -1,5 +1,5 @@
 from krisp.data.readers import WaspamReader, ConfigReader
-from krisp.arts.tools import set_griddedfield3
+from krisp.arts.tools import set_griddedfield3, make_se_diag
 from krisp.arts.logger import get_logger
 import pyarts
 import numpy as np
@@ -101,16 +101,22 @@ class WaspamRetrieveMulti:
         time = pyarts.arts.Time(dt)
         arr_of_time = pyarts.arts.ArrayOfTime(self.blocks, time)
         self.ws.sensor_time = arr_of_time
+        offset = self.config["measurement"]["y_offset"]
 
-        y_concat = np.concatenate([self.y3_common, self.y7_common])
+        y_concat = np.concatenate(
+            [self.y3_common + offset, self.y7_common + offset])
         self.ws.y = y_concat
         self.ws.yf = []
         self.ws.y_baseline = y_concat * 0
         self.ws.f_backend = self.meas.f
 
         # fill = np.var(self.meas.y[0:100])
-        fills = [np.full_like(y, np.var(y[0:100]))
-                 for y in zip(self.y3_common, self.y7_common)]
+        fills = []
+        quad3, gauss3, nu03 = make_se_diag(self.f_common, self.y3_common)
+        quad7, gauss7, nu07 = make_se_diag(self.f_common, self.y7_common)
+        fills = [gauss3, gauss7]
+        # fills = [np.full_like(y, np.var(y[0:100]))
+        #         for y in zip(self.y3_common, self.y7_common)]
         se_diag = np.concatenate(fills)
         import scipy.sparse as sp
 
@@ -122,11 +128,6 @@ class WaspamRetrieveMulti:
         self.logger.info("Successfully set measurements in arts")
 
     def _set_sensor(self):
-        @pyarts.workspace.arts_agenda(ws=self.ws, set_agenda=True)
-        def sensor_response_agenda(ws):
-            ws.AntennaOff()
-            ws.sensor_responseInit(sensor_norm=1)
-            ws.sensor_responseBackend(sensor_norm=1)
 
         n = len(self.meas.f)
         fe = self.meas.f[-1]
@@ -141,8 +142,8 @@ class WaspamRetrieveMulti:
 
         # -- CHECK THIS: Might be to simple
         # self.ws.f_grid = np.linspace(fs - res, fe + res, n)
-        fs = self.f_common[0]
-        fe = self.f_common[-1]
+        fs = self.f_common[0] - 2e6
+        fe = self.f_common[-1] + 2e6
         res = (fe - fs) / (2 * n)
         fg = np.linspace(fs - res, fe + res, 2 * n)
         self.ws.f_grid = fg
@@ -150,6 +151,12 @@ class WaspamRetrieveMulti:
             [[self.config["sensor"]["sensor_pos"]] * self.blocks]).T
         self.ws.sensor_los = np.array(
             [[self.config["sensor"]["sensor_los"]] * self.blocks]).T
+
+        @pyarts.workspace.arts_agenda(ws=self.ws, set_agenda=True)
+        def sensor_response_agenda(ws):
+            ws.AntennaOff()
+            ws.sensor_responseInit(sensor_norm=1)
+            ws.sensor_responseBackend(sensor_norm=1)
         self.ws.sensor_response_agenda.value.execute(self.ws)
         self.logger.info("Successfully set sensor variables in arts")
 
@@ -169,12 +176,12 @@ class WaspamRetrieveMulti:
 
         p = self.meas.p / 1e2
         xa = self.meas.apriori
-        # sigma = []
+        sigma = self.meas.sx_diag
 
         # x = np.linspace(0, len(p), len(p))
         # scale = 0.1 + (0.6 / (1 + np.exp(-x / 30))) - 0.35
-        scale = 0.05
-        sigma = scale * xa
+        # scale = 0.05
+        # sigma = scale * xa
 
         sigma = np.array(sigma)
         self.ws.retrievalAddAbsSpecies(
@@ -186,34 +193,6 @@ class WaspamRetrieveMulti:
             g3=self.ws.lon_grid.value,
         )
 
-        # -- relative xa_sx
-        # if "sx" in self.config["retrieval"].keys():
-        #    rel = self.config["retrieval"]["sx"]
-        #    sigma = rel * self.meas.apriori
-        #    self.ws.retrievalAddAbsSpecies(
-        #        species="H2O-161",
-        #        covmat_block=pyarts.arts.Sparse(np.diag(sigma**2)),
-        #        unit="vmr",
-        #        g1=self.ws.p_grid,
-        #        g2=self.ws.lat_grid.value,
-        #        g3=self.ws.lon_grid.value,
-        #    )
-        # if "sx_path" in self.config["retrieval"].keys():
-        #    sx_path = self.config["retrieval"]["sx_path"]
-        #    ds = xr.load_dataset(sx_path)
-        #    diag = ds.sx_qa.values
-        #    self.ws.retrievalAddAbsSpecies(
-        #        species="H2O-161",
-        #        covmat_block=pyarts.arts.Sparse(np.diag(diag)),
-        #        unit="vmr",
-        #        g1=self.ws.p_grid,
-        #        g2=self.ws.lat_grid.value,
-        #        g3=self.ws.lon_grid.value,
-        #    )
-
-        # -- Polyfit
-        # poly_order = 4
-        # poly_var = [1, 0.1, 0.1, 0.1, 0.1]
         self.ws.retrievalAddPolyfit(
             poly_order=self.config["retrieval"]["poly_order"],
             no_pol_variation=0,
@@ -315,8 +294,35 @@ class WaspamRetrieveMulti:
     def _get_catalogue_data(self):
         home = Path.home()
         arts_dir = home / ".cache/arts"
+        month = datetime.fromtimestamp(self.meas.mid).month
+        match month:
+            case 1:
+                atm = "arts-xml-data-2.6.18/planets/Earth/Fascod/subarctic-winter/subarctic-winter"
+            case 2:
+                atm = "arts-xml-data-2.6.18/planets/Earth/Fascod/subarctic-winter/subarctic-winter"
+            case 3:
+                atm = "arts-xml-data-2.6.18/planets/Earth/Fascod/subarctic-winter/subarctic-winter"
+            case 4:
+                atm = "arts-xml-data-2.6.18/planets/Earth/Fascod/subarctic-winter/subarctic-winter"
+            case 5:
+                atm = "arts-xml-data-2.6.18/planets/Earth/Fascod/subarctic-winter/subarctic-winter"
+            case 6:
+                atm = "arts-xml-data-2.6.18/planets/Earth/Fascod/subarctic-summer/subarctic-summer"
+            case 7:
+                atm = "arts-xml-data-2.6.18/planets/Earth/Fascod/subarctic-summer/subarctic-summer"
+            case 8:
+                atm = "arts-xml-data-2.6.18/planets/Earth/Fascod/subarctic-summer/subarctic-summer"
+            case 9:
+                atm = "arts-xml-data-2.6.18/planets/Earth/Fascod/subarctic-summer/subarctic-summer"
+            case 10:
+                atm = "arts-xml-data-2.6.18/planets/Earth/Fascod/subarctic-winter/subarctic-winter"
+            case 11:
+                atm = "arts-xml-data-2.6.18/planets/Earth/Fascod/subarctic-winter/subarctic-winter"
+            case 12:
+                atm = "arts-xml-data-2.6.18/planets/Earth/Fascod/subarctic-winter/subarctic-winter"
+
         self.lines = str(arts_dir / self.config["paths"]["lines"]) + "/"
-        self.atm = str(arts_dir / self.config["paths"]["xml"])
+        self.atm = str(arts_dir / atm)
 
     def run(self):
         self._load_measurement_and_config()
@@ -339,90 +345,114 @@ class WaspamRetrieveMulti:
         outdir = get_outdir()
 
         # CHANGE BACK TO nc
-        outpath = f"{outdir}/{dt}.npy"
+        outpath = f"{outdir}/{dt}.nc"
 
         # get data from WSV
         n = len(self.ws.p_grid.value)
-        avk = self.ws.avk.value[0:n, 0:n]
-        covmat_so = self.ws.covmat_so.value[0:n, 0:n]
-        covmat_ss = self.ws.covmat_ss.value[0:n, 0:n]
-        x = self.ws.x.value
-        q = x[0:n]
-        qa = self.ws.xa.value[0:n]
-        jacobian = self.ws.jacobian.value[:, 0:n]
-        residual = self.ws.y.value - self.ws.yf.value
-        diagnostics = self.ws.oem_diagnostics.value
-        dxdy = self.ws.dxdy.value
-        self.ws.MatrixCreate(name="se_matrix")
-        self.ws.MatrixFromCovarianceMatrix(
-            output=self.ws.se_matrix, input=self.ws.covmat_se)
-        se = self.ws.se_matrix.value
+        # avk = self.ws.avk.value[0:n, 0:n]
+        # covmat_so = self.ws.covmat_so.value[0:n, 0:n]
+        # covmat_ss = self.ws.covmat_ss.value[0:n, 0:n]
+        # x = self.ws.x.value
+        # q = x[0:n]
+        # qa = self.ws.xa.value[0:n]
+        # jacobian = self.ws.jacobian.value[:, 0:n]
+        # residual = self.ws.y.value - self.ws.yf.value
+        # diagnostics = self.ws.oem_diagnostics.value
+        # dxdy = self.ws.dxdy.value
+        # self.ws.MatrixCreate(name="se_matrix")
+        # self.ws.MatrixFromCovarianceMatrix(
+        #    output=self.ws.se_matrix, input=self.ws.covmat_se)
+        # se = self.ws.se_matrix.value
+        # zgrid = self.ws.z_field.value.flatten()
+
+        f = self.ws.f_backend.value.value
+        p = self.ws.p_grid.value.value
+        y = self.ws.y.value.value.reshape(2, len(f))
+        yf = self.ws.yf.value.value.reshape(2, len(f))
+        x = self.ws.x.value.value
+        avk = self.ws.avk.value.value
+        xa = self.ws.xa.value.value
+        ss_var = self.ws.retrieval_ss.value.value
+        eo_var = self.ws.retrieval_eo.value.value
         zgrid = self.ws.z_field.value.flatten()
 
-        data = {
-            "y": np.array(self.ws.y.value),
-            "yf": np.array(self.ws.yf.value),
-            "f": np.array(self.ws.f_backend.value),
-            "x": self.ws.x.value,
-            "xa": self.ws.xa.value,
-            "p": self.ws.p_grid.value,
-        }
+        # get for each block
 
-        np.save(outpath, data, allow_pickle=True)
-
-        #        # make dataset
-        #        ds = xr.Dataset(
-        #            data_vars={
-        #                "y": (["f"], self.ws.y.value),
-        #                "yf": (["f"], self.ws.yf.value),
-        #                "yb": (["f"], self.ws.y_baseline.value),
-        #                "residual": (["f"], residual),
-        #                "avk": (["p", "pk"], avk),
-        #                "q": (["p"], q),
-        #                "qa": (["p"], qa),
-        #                "jacobian": (["f", "p"], jacobian),
-        #                "covmat_ss": (["p", "pk"], covmat_ss),
-        #                "covmat_so": (["p", "pk"], covmat_so),
-        #                "dxdy": (["x", "f"], dxdy),
-        #                "covmat_se": (["f", "fk"], se),
-        #                "z": (["p"], zgrid),
-        #            },
-        #            coords={"f": self.ws.f_backend.value, "p": self.ws.p_grid.value, "x": x},
-        #        )
-        #        ds.attrs = {
-        #            "convergence": diagnostics[0],
-        #            "start_cost": diagnostics[1],
-        #            "end_cost": diagnostics[2],
-        #            "end_ycost": diagnostics[3],
-        #            "iterations": diagnostics[4],
-        #            "timestamp": self.meas.mid,
-        #        }
-        #        ds.to_netcdf(outpath)
+        ds = xr.Dataset(
+            coords={
+                "f": f,
+                "p": p,
+            },
+            data_vars={
+                "y3": (["f"], y[0]),
+                "y7": (["f"], y[1]),
+                "yf3": (["f"], yf[0]),
+                "yf7": (["f"], yf[1]),
+                "q": (["p"], x[0:len(p)]),
+                "qa": (["p"], xa[0:len(p)]),
+                "avk": (["p", "pk"], avk[0:len(p), 0:len(p)]),
+                "ss_var": (["p"], ss_var[0:len(p)]),
+                "eo_var": (["p"], eo_var[0:len(p)]),
+                "z": (["p"], zgrid)
+            }
+        )
+        ds.to_netcdf(outpath)
         outpath = Path(outpath)
         self.logger.info(f"Saved retrieval in {outpath}")
 
 
 def get_outdir():
     home = Path.home()
-    wp = home / "Data" / "waspam"
-    l2 = wp / "L2"
+    wp = home / "databear" / "cWASPAM"
+    l2 = wp / "L2" / "multiret"
     if not l2.exists():
         l2.mkdir(parents=True)
     return l2
 
 
 def interp_spec(data):
-    freq_h = data.f3
-    freq_v = data.f7
-    spec_h = data.y3
-    spec_v = data.y7
+    scale = 20.885e9
+    f0 = 22.23508e9
 
-    freq_common = freq_h
-    spec_h_common = spec_h
+    fmin = 22.2420e9
+    fmax = 22.2428e9
+
+    # y3
+    f = data.f3 + scale
+    mask = (f >= fmin) & (f <= fmax)
+    spectra3 = data.y3
+    freq = f.copy()
+    corrected3 = spectra3.copy()
+    good = ~mask & np.isfinite(spectra3) & np.isfinite(freq)
+    corrected3[mask] = np.interp(freq[mask], freq[good], spectra3[good])
+    # corrected3 = corrected3[::-1]
+
+    idx = np.argmax(corrected3)
+    df = (data.f3[idx] + scale) - f0
+    f3 = data.f3 + scale - df
+
+    # y7
+    f = data.f7 + scale
+    mask = (f >= fmin) & (f <= fmax)
+    spectra7 = data.y7
+    freq = f.copy()
+    corrected7 = spectra7.copy()
+    good = ~mask & np.isfinite(spectra7) & np.isfinite(freq)
+    corrected7[mask] = np.interp(freq[mask], freq[good], spectra7[good])
+
+    idx = np.argmax(corrected7)
+    df = (data.f7[idx] + scale) - f0
+    f7 = data.f7 + scale - df
+
+    freq_common = f3
+    spec_h_common = corrected3
+    freq_v = f7
+    spec_v = corrected7
 
     spec_v_common = np.interp(
         freq_common,
         freq_v,
         spec_v,
     )
+
     return freq_common, spec_h_common, spec_v_common

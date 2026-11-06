@@ -1,6 +1,7 @@
 from krisp.data.readers import WaspamReader, ConfigReader
 from krisp.arts.tools import set_griddedfield3
 from krisp.arts.logger import get_logger
+from krisp.arts.tools import make_se_diag
 import pyarts
 import numpy as np
 from datetime import datetime
@@ -9,9 +10,10 @@ from pathlib import Path
 
 
 class WaspamRetrieve:
-    def __init__(self, mfile, cfile):
+    def __init__(self, mfile, cfile, outdir):
         self.mfile = mfile
         self.cfile = cfile
+        self.outdir = outdir
         self.logger = get_logger()
         self.ws = pyarts.Workspace()
 
@@ -105,12 +107,21 @@ class WaspamRetrieve:
         self.ws.y_baseline = self.ws.y.value * 0
         self.ws.f_backend = self.meas.f
 
-        fill = np.var(self.meas.y[0:100])
-        # yerr = np.full_like(
-        #    self.meas.f, self.config["measurement"]["yerr_const"],)
-        yerr = np.full_like(self.meas.f, fill)
+        # fill = np.var(self.meas.y[0:100])
+        # yerr = np.full_like(self.meas.f, fill)
 
-        self.ws.covmat_seSet(covmat=pyarts.arts.Sparse(np.diag(yerr)))
+        # gaussian increasing uncert
+        quadratic, gaussian, nu0 = make_se_diag(self.meas.f, self.meas.y)
+        match self.config["retrieval"]["se_error"]:
+            case "gaussian":
+                se = gaussian
+            case "quadratic":
+                se = quadratic
+            case "constant":
+                fill = np.var(self.meas.y[0:100])
+                se = np.full_like(self.meas.f, fill)
+
+        self.ws.covmat_seSet(covmat=pyarts.arts.Sparse(np.diag(se)))
         self.logger.info("Successfully set measurements in arts")
 
     def _set_sensor(self):
@@ -152,15 +163,6 @@ class WaspamRetrieve:
             ws.VectorAddElementwise(ws.yf, ws.yf, ws.y_baseline)
             ws.jacobianAdjustAndTransform()
 
-#        p = self.meas.p / 1e2
-#        xa = self.meas.apriori
-#        sigma = []
-#
-#        x = np.linspace(0, len(p), len(p))
-#        scale = 0.1 + (0.6 / (1 + np.exp(-x / 30))) - 0.35
-#        sigma = scale * xa
-#
-#        sigma = np.array(sigma)
         sigma = self.meas.sx_diag
         self.ws.retrievalAddAbsSpecies(
             species="H2O-161",
@@ -171,34 +173,6 @@ class WaspamRetrieve:
             g3=self.ws.lon_grid.value,
         )
 
-        # -- relative xa_sx
-        # if "sx" in self.config["retrieval"].keys():
-        #    rel = self.config["retrieval"]["sx"]
-        #    sigma = rel * self.meas.apriori
-        #    self.ws.retrievalAddAbsSpecies(
-        #        species="H2O-161",
-        #        covmat_block=pyarts.arts.Sparse(np.diag(sigma**2)),
-        #        unit="vmr",
-        #        g1=self.ws.p_grid,
-        #        g2=self.ws.lat_grid.value,
-        #        g3=self.ws.lon_grid.value,
-        #    )
-        # if "sx_path" in self.config["retrieval"].keys():
-        #    sx_path = self.config["retrieval"]["sx_path"]
-        #    ds = xr.load_dataset(sx_path)
-        #    diag = ds.sx_qa.values
-        #    self.ws.retrievalAddAbsSpecies(
-        #        species="H2O-161",
-        #        covmat_block=pyarts.arts.Sparse(np.diag(diag)),
-        #        unit="vmr",
-        #        g1=self.ws.p_grid,
-        #        g2=self.ws.lat_grid.value,
-        #        g3=self.ws.lon_grid.value,
-        #    )
-
-        # -- Polyfit
-        # poly_order = 4
-        # poly_var = [1, 0.1, 0.1, 0.1, 0.1]
         self.ws.retrievalAddPolyfit(
             poly_order=self.config["retrieval"]["poly_order"],
             no_pol_variation=0,
@@ -285,6 +259,7 @@ class WaspamRetrieve:
 
     def _run_OEM(self):
         self.logger.info(f"Starting retrieval on {self.mfile}")
+
         self.ws.OEM(
             method="lm",
             lm_ga_settings=self.config["retrieval"]["lm_ga_settings"],
@@ -296,8 +271,35 @@ class WaspamRetrieve:
     def _get_catalogue_data(self):
         home = Path.home()
         arts_dir = home / ".cache/arts"
+        month = datetime.fromtimestamp(self.meas.mid).month
+        match month:
+            case 1:
+                atm = "arts-xml-data-2.6.18/planets/Earth/Fascod/subarctic-winter/subarctic-winter"
+            case 2:
+                atm = "arts-xml-data-2.6.18/planets/Earth/Fascod/subarctic-winter/subarctic-winter"
+            case 3:
+                atm = "arts-xml-data-2.6.18/planets/Earth/Fascod/subarctic-winter/subarctic-winter"
+            case 4:
+                atm = "arts-xml-data-2.6.18/planets/Earth/Fascod/subarctic-winter/subarctic-winter"
+            case 5:
+                atm = "arts-xml-data-2.6.18/planets/Earth/Fascod/subarctic-winter/subarctic-winter"
+            case 6:
+                atm = "arts-xml-data-2.6.18/planets/Earth/Fascod/subarctic-summer/subarctic-summer"
+            case 7:
+                atm = "arts-xml-data-2.6.18/planets/Earth/Fascod/subarctic-summer/subarctic-summer"
+            case 8:
+                atm = "arts-xml-data-2.6.18/planets/Earth/Fascod/subarctic-summer/subarctic-summer"
+            case 9:
+                atm = "arts-xml-data-2.6.18/planets/Earth/Fascod/subarctic-summer/subarctic-summer"
+            case 10:
+                atm = "arts-xml-data-2.6.18/planets/Earth/Fascod/subarctic-winter/subarctic-winter"
+            case 11:
+                atm = "arts-xml-data-2.6.18/planets/Earth/Fascod/subarctic-winter/subarctic-winter"
+            case 12:
+                atm = "arts-xml-data-2.6.18/planets/Earth/Fascod/subarctic-winter/subarctic-winter"
+
         self.lines = str(arts_dir / self.config["paths"]["lines"]) + "/"
-        self.atm = str(arts_dir / self.config["paths"]["xml"])
+        self.atm = str(arts_dir / atm)
 
     def run(self):
         self._load_measurement_and_config()
@@ -317,8 +319,7 @@ class WaspamRetrieve:
         # set path
         dt = datetime.fromtimestamp(self.meas.mid)
         dt = dt.isoformat()
-        outdir = get_outdir()
-        outpath = f"{outdir}/{dt}.nc"
+        outpath = f"{self.outdir}/{dt}.nc"
 
         # get data from WSV
         n = len(self.ws.p_grid.value)
@@ -366,15 +367,10 @@ class WaspamRetrieve:
             "iterations": diagnostics[4],
             "timestamp": self.meas.mid,
         }
+        for values in self.config.values():
+            for k, v in values.items():
+                ds.attrs[k] = v
+
         ds.to_netcdf(outpath)
         outpath = Path(outpath)
         self.logger.info(f"Saved retrieval in {outpath}")
-
-
-def get_outdir():
-    home = Path.home()
-    wp = home / "Data" / "waspam"
-    l2 = wp / "L2"
-    if not l2.exists():
-        l2.mkdir(parents=True)
-    return l2

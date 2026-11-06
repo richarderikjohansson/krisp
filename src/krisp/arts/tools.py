@@ -30,3 +30,27 @@ def set_griddedfield3(pressure, latitude, longitude, data):
     data = Tensor3(data[:, np.newaxis, np.newaxis])
     gf.data = data
     return gf
+
+
+def make_se_diag(f, y):
+    nu0 = f[np.argmax(y)]
+    n = len(f)
+    i = np.arange(n)
+
+    # sigma min/max
+    sigma_min = np.std(y[0:100])
+    sigma_max = 10 * sigma_min
+
+    # quadratic
+    x = np.abs(f - nu0) / np.max(np.abs(f - nu0))
+    quadratic = sigma_min**2 + (sigma_max**2 - sigma_min**2) * x**2
+
+    # gaussian
+    center = np.argmax(y)
+    d = np.maximum(0, np.abs(i - center) - 50)
+    w = 1300
+    gaussian = sigma_max**2 - (sigma_max**2 - sigma_min**2) * np.exp(
+        -(d**2) / (2 * w**2)
+    )
+
+    return quadratic, gaussian, nu0

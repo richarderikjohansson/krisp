@@ -167,29 +167,30 @@ class WaspamReader:
 
     def load_data(self):
         with h5py.File(self.fp, "r") as h5:
-            comb = h5["combined_spec"]
+            # comb = h5["combined_spec"]
+            tot = h5["tot"]
             met = h5["met"]
             aux = h5["aux"]
             w3 = h5["waspam3"]
             w7 = h5["waspam7"]
-            z = altitude_from_pressure(
-                met["p"][()],
-                met["temperature_profile"][()],
-            )
+            # z = altitude_from_pressure(
+            #    met["p"][()],
+            #    met["temperature_profile"][()],
+            # )
             self.data = WaspamData(
                 f3=w3["f"][()],
                 f7=w7["f"][()],
-                f=comb["f"][()],
+                f=tot["f"][()],
                 y3=w3["ycorr"][()],
                 y7=w7["ycorr"][()],
-                y=comb["ycorr"][()],
+                y=tot["ycorr"][()],
                 h2o=met["h2o_profile"][()],
                 o3=met["o3_profile"][()],
                 apriori=met["apriori"][()],
                 sx_diag=met["sx_diag"][()],
                 temperature=met["temperature_profile"][()],
-                p=met["p"][()],
-                z=z,
+                p=met["pret"][()],
+                z=None,
                 start=aux["start"][()],
                 end=aux["end"][()],
                 mid=aux["mid"][()],
